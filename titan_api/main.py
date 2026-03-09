@@ -24,11 +24,13 @@ Security Notes:
 
 Author:
     Ron Wiley
+
 Project:
     Titan AI - Operational Personnel Assistant
 """
 
 import json
+import re
 
 from fastapi import FastAPI, Depends, HTTPException, Form
 from fastapi.responses import HTMLResponse
@@ -65,6 +67,219 @@ app.mount("/ui", StaticFiles(directory="titan_ui", html=True), name="ui")
 def root():
     """Redirect root to UI."""
     return '<meta http-equiv="refresh" content="0; url=/ui/index.html">'
+
+
+# ---------------------------------------------------------------------
+# Helper Functions
+# ---------------------------------------------------------------------
+
+MEMORY_SAVE_TRIGGERS = [
+    "remember that",
+    "remember this",
+    "titan remember",
+    "hey titan remember",
+    "save this",
+    "store this",
+]
+
+
+def normalize_text(text: str) -> str:
+    """
+    Lowercase, trim, and collapse whitespace.
+    Keeps punctuation handling simple for MVP.
+    """
+    if not text:
+        return ""
+
+    text = text.strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def tokenize(text: str) -> set[str]:
+    """
+    Small word tokenizer for keyword overlap matching.
+    Filters out very short words to reduce noise.
+    """
+    words = re.findall(r"\w+", normalize_text(text))
+    return {word for word in words if len(word) > 2}
+
+
+def is_memory_save_request(user_text: str) -> bool:
+    """
+    Detect explicit save-memory requests.
+    """
+    text = normalize_text(user_text)
+    return any(trigger in text for trigger in MEMORY_SAVE_TRIGGERS)
+
+
+def extract_memory_content(user_text: str) -> str:
+    """
+    Remove the command phrase and keep only the fact itself.
+    Example:
+        'hey titan remember that I park in lot 5'
+    becomes:
+        'I park in lot 5'
+    """
+    if not user_text:
+        return ""
+
+    text = user_text.strip()
+
+    patterns = [
+        r"(?i)^hey titan remember that\s*",
+        r"(?i)^titan remember that\s*",
+        r"(?i)^remember that\s*",
+        r"(?i)^hey titan remember\s*",
+        r"(?i)^titan remember\s*",
+        r"(?i)^remember this\s*",
+        r"(?i)^save this\s*",
+        r"(?i)^store this\s*",
+    ]
+
+    for pattern in patterns:
+        text = re.sub(pattern, "", text).strip()
+
+    return text
+
+
+def get_or_create_memory(
+    db: Session,
+    user_id: int,
+    tag: str,
+    content: str,
+    score: int = 1
+) -> tuple[MemoryItem, bool]:
+    """
+    Prevent exact duplicate memory entries for the same user.
+    Returns:
+        (memory_item, created_new)
+    """
+    normalized_content = normalize_text(content)
+
+    existing_rows = (
+        db.query(MemoryItem)
+        .filter(MemoryItem.user_id == user_id, MemoryItem.tag == tag)
+        .order_by(MemoryItem.id.desc())
+        .all()
+    )
+
+    for row in existing_rows:
+        if normalize_text(row.content) == normalized_content:
+            return row, False
+
+    memory = MemoryItem(
+        user_id=user_id,
+        tag=tag,
+        content=content,
+        score=score,
+    )
+    db.add(memory)
+    db.commit()
+    db.refresh(memory)
+
+    return memory, True
+
+
+def find_memory_match(db: Session, user_id: int, user_text: str) -> MemoryItem | None:
+    """
+    MVP memory retrieval:
+    - keyword overlap
+    - prefers higher overlap
+    - breaks ties by newest memory
+    - returns best match even if overlap is small
+    """
+    query_words = tokenize(user_text)
+    if not query_words:
+        return None
+
+    rows = (
+        db.query(MemoryItem)
+        .filter(MemoryItem.user_id == user_id)
+        .order_by(MemoryItem.id.desc())
+        .all()
+    )
+
+    best_row = None
+    best_score = 0
+
+    for row in rows:
+        memory_words = tokenize(row.content)
+        overlap = len(query_words & memory_words)
+
+        if overlap > best_score:
+            best_row = row
+            best_score = overlap
+
+    return best_row
+
+
+def format_memory_reply(memory_item: MemoryItem) -> str:
+    """
+    Convert stored memory into a direct assistant response.
+    """
+    content = (memory_item.content or "").strip()
+    if not content:
+        return "I found a memory match, but it was empty."
+
+    return f"You told me: {content}"
+
+
+def build_brain_input(db: Session, conversation_id: int, user: User) -> BrainInput:
+    """
+    Build the BrainInput object from stored conversation history.
+    """
+    msgs = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.id.asc())
+        .all()
+    )
+
+    mode_map = {
+        "student": "student_coach",
+        "teacher": "teacher_ta",
+        "admin": "admin",
+    }
+
+    return BrainInput(
+        user_id=user.id,
+        role=user.role,
+        mode=mode_map.get(user.role, "student_general"),
+        messages=[ChatMessage(role=m.role, content=m.content) for m in msgs],
+        tools=["create_task", "save_memory", "draft_email"],
+    )
+
+
+def write_assistant_reply(db: Session, conversation_id: int, reply_text: str) -> None:
+    """
+    Store assistant message in the message history.
+    """
+    db.add(Message(conversation_id=conversation_id, role="assistant", content=reply_text))
+    db.commit()
+
+
+def write_audit_log(
+    db: Session,
+    user_id: int,
+    request_text: str,
+    reply_text: str,
+    proposed_actions: list
+) -> AuditLog:
+    """
+    Store the audit record for every chat request.
+    """
+    audit = AuditLog(
+        user_id=user_id,
+        request_text=request_text,
+        proposed_actions_json=json.dumps(proposed_actions),
+        approved_actions_json=json.dumps([]),
+        result_json=json.dumps({"reply": reply_text}),
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(audit)
+    return audit
 
 
 # ---------------------------------------------------------------------
@@ -191,54 +406,71 @@ def chat(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    clean_text = text.strip()
+    if not clean_text:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
     # Store user message
-    db.add(Message(conversation_id=conversation_id, role="user", content=text))
+    db.add(Message(conversation_id=conversation_id, role="user", content=clean_text))
     db.commit()
 
-    # Build BrainInput from convo history
-    msgs = (
-        db.query(Message)
-        .filter(Message.conversation_id == conversation_id)
-        .order_by(Message.id.asc())
-        .all()
-    )
+    reply_text = None
+    proposed_actions = []
 
-    # NEW: Explicit operating mode (drives policy behavior)
-    mode_map = {
-        "student": "student_coach",
-        "teacher": "teacher_ta",
-        "admin": "admin",
-    }
+    # 1. Explicit memory save request
+    if is_memory_save_request(clean_text):
+        memory_content = extract_memory_content(clean_text)
 
-    brain_input = BrainInput(
-        user_id=user.id,
-        role=user.role,
-        mode=mode_map.get(user.role, "student_general"),
-        messages=[ChatMessage(role=m.role, content=m.content) for m in msgs],
-        tools=["create_task", "save_memory", "draft_email"],
-    )
+        if not memory_content:
+            reply_text = "Tell me what you want me to remember."
+        else:
+            memory_item, created_new = get_or_create_memory(
+                db=db,
+                user_id=user.id,
+                tag="user",
+                content=memory_content,
+                score=1,
+            )
 
-    brain_output = run_brain(brain_input)
+            if created_new:
+                reply_text = f"Got it. I'll remember that: {memory_item.content}"
+            else:
+                reply_text = f"I already had that in memory: {memory_item.content}"
+
+    # 2. Memory lookup before AI fallback
+    if reply_text is None:
+        memory_match = find_memory_match(db, user.id, clean_text)
+        if memory_match:
+            reply_text = format_memory_reply(memory_match)
+
+    # 3. Fall back to brain only if memory did not answer
+    if reply_text is None:
+        brain_input = build_brain_input(db, conversation_id, user)
+
+        brain_output = run_brain(
+            brain_input,
+            db=db,
+            user_id=user.id,
+        )
+
+        reply_text = brain_output.reply
+        proposed_actions = [a.model_dump() for a in brain_output.proposed_actions]
 
     # Store assistant reply
-    db.add(Message(conversation_id=conversation_id, role="assistant", content=brain_output.reply))
-    db.commit()
+    write_assistant_reply(db, conversation_id, reply_text)
 
-    # Log audit record (proposal only)
-    audit = AuditLog(
+    # Log audit record
+    audit = write_audit_log(
+        db=db,
         user_id=user.id,
-        request_text=text,
-        proposed_actions_json=json.dumps([a.model_dump() for a in brain_output.proposed_actions]),
-        approved_actions_json=json.dumps([]),
-        result_json=json.dumps({"reply": brain_output.reply}),
+        request_text=clean_text,
+        reply_text=reply_text,
+        proposed_actions=proposed_actions,
     )
 
-    db.add(audit)
-    db.commit()
-
     return {
-        "reply": brain_output.reply,
-        "proposed_actions": [a.model_dump() for a in brain_output.proposed_actions],
+        "reply": reply_text,
+        "proposed_actions": proposed_actions,
         "audit_log_id": audit.id
     }
 

@@ -8,7 +8,7 @@ Purpose:
 Author:
     Ron Wiley
 Project:
-    Titan AI - Operational Personnel Assistant
+    Titan AI - Operational Personal Assistant
 """
 
 from __future__ import annotations
@@ -21,11 +21,15 @@ from typing import List, Literal, Dict, Any, Optional
 # Role / Mode Definitions
 # ---------------------------------------------------------------------
 
-Role = Literal["student", "teacher", "admin"]
+Role = Literal["owner"]
 MsgRole = Literal["user", "assistant", "system"]
 
-# The key upgrade: explicit operating modes (demo-friendly + deterministic)
-Mode = Literal["student_coach", "student_general", "teacher_ta", "admin"]
+Mode = Literal[
+    "personal_general",
+    "personal_productivity",
+    "personal_builder",
+    "personal_family",
+]
 
 
 # ---------------------------------------------------------------------
@@ -50,11 +54,7 @@ class BrainInput(BaseModel):
     """
     user_id: int
     role: Role
-
-    # NEW:
-    # If omitted, we’ll infer from role in policy (backward compatible)
     mode: Optional[Mode] = None
-
     messages: List[ChatMessage]
     tools: List[str]
 

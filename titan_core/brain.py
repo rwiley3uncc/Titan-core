@@ -1,128 +1,232 @@
 """
 Titan Core - Cognitive Planning Engine
----------------------------------------
+--------------------------------------
 
 Purpose:
-    Transforms structured conversation input (BrainInput)
-    into a structured BrainOutput containing:
+    Converts structured BrainInput into BrainOutput.
 
-        - Natural language reply
-        - Proposed tool actions (NOT executed here)
-
-Role in Architecture:
-    Controller  ->  Brain  ->  ProposedRun
-    Brain NEVER executes actions.
-    Brain ONLY proposes structured actions.
-
-Design Philosophy:
-    - Side-effect free
-    - Deterministic (rule-based for MVP)
-    - Future-proofed for LLM swap-in
-    - Strict input/output contract
-
-Upgrade Path:
-    The body of run_brain() can later be replaced
-    with an LLM call while keeping the same
-    BrainInput -> BrainOutput contract.
-
-Author:
-    Ron Wiley
-Project:
-    Titan AI - Operational Personnel Assistant
+Design Goals:
+    - Titan behaves as a personal assistant for its owner
+    - Brain generates replies and proposes actions
+    - Brain never executes actions
+    - Memory reading allowed, writing handled in controller
 """
 
 from __future__ import annotations
 
-from typing import Optional
+import os
+from typing import Optional, Any
+from sqlalchemy.orm import Session
 
 from .schemas import BrainInput, BrainOutput, ProposedAction
 from .rules import propose_from_text
-
-# NEW: Post-planning enforcement layers (keep Brain clean + modular)
-# - policy.py enforces role rules + academic integrity constraints
-# - validator.py ensures the final output is well-formed
 from .policy import apply_policy
 from .validator import validate_output
+from .memory import get_recent_memories
+
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
+
+
+DEFAULT_MODEL = os.getenv("TITAN_OPENAI_MODEL", "gpt-4.1-mini")
+MAX_HISTORY_MESSAGES = 10
+MAX_MEMORY_ITEMS = 10
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+
+def _latest_user_text(inp: BrainInput) -> Optional[str]:
+    for message in reversed(inp.messages):
+        if message.role == "user":
+            text = (message.content or "").strip()
+            if text:
+                return text
+    return None
+
+
+def _conversation_window(inp: BrainInput) -> str:
+    msgs = inp.messages[-MAX_HISTORY_MESSAGES:]
+    lines = []
+
+    for m in msgs:
+        role = m.role.upper()
+        content = (m.content or "").strip()
+        if content:
+            lines.append(f"{role}: {content}")
+
+    return "\n".join(lines)
+
+
+def _system_prompt(inp: BrainInput) -> str:
+    """
+    Titan personal assistant prompt.
+    """
+
+    tools = ", ".join(inp.tools) if inp.tools else "none"
+
+    return f"""
+You are Titan, a personal AI assistant.
+
+You assist the system owner with:
+- remembering important information
+- organizing tasks and plans
+- thinking through problems
+- drafting messages
+- helping structure decisions
+
+Behavior principles:
+- Be clear, calm, and practical.
+- Prefer concise and structured replies.
+- Suggest next steps when helpful.
+- Never claim to have executed actions.
+- Never invent tool results.
+
+Context:
+Owner role: {inp.role}
+Assistant mode: {inp.mode or "personal_general"}
+Available tools: {tools}
+
+Only produce the assistant's natural language reply.
+Do not produce JSON.
+Do not output tool calls.
+""".strip()
+
+
+def _memory_context(memories: list[Any]) -> str:
+    if not memories:
+        return "No stored memories."
+
+    lines = []
+    for m in memories:
+        tag = getattr(m, "tag", "general")
+        content = getattr(m, "content", "")
+        lines.append(f"- [{tag}] {content}")
+
+    return "\n".join(lines)
+
+
+def _generate_llm_reply(
+    inp: BrainInput,
+    user_text: str,
+    memories: list[Any]
+) -> Optional[str]:
+
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if not api_key or OpenAI is None:
+        return None
+
+    transcript = _conversation_window(inp)
+    memory_block = _memory_context(memories)
+
+    prompt = f"""
+Conversation:
+{transcript}
+
+Known information:
+{memory_block}
+
+Latest message:
+{user_text}
+
+Write Titan's reply.
+"""
+
+    try:
+        client = OpenAI(api_key=api_key)
+
+        response = client.responses.create(
+            model=DEFAULT_MODEL,
+            instructions=_system_prompt(inp),
+            input=prompt,
+        )
+
+        text = getattr(response, "output_text", None)
+
+        if not text:
+            return None
+
+        return str(text).strip()
+
+    except Exception:
+        return None
+
+
+def _convert_actions(actions: list[dict]) -> list[ProposedAction]:
+
+    out: list[ProposedAction] = []
+
+    for action in actions:
+        a_type = action.get("type")
+        a_args = action.get("args", {})
+
+        if isinstance(a_type, str):
+            out.append(
+                ProposedAction(
+                    type=a_type.strip(),
+                    args=a_args if isinstance(a_args, dict) else {}
+                )
+            )
+
+    return out
 
 
 # ---------------------------------------------------------------------
 # Core Brain Execution
 # ---------------------------------------------------------------------
 
-def run_brain(inp: BrainInput) -> BrainOutput:
-    """
-    Main cognitive entrypoint.
+def run_brain(
+    inp: BrainInput,
+    db: Optional[Session] = None,
+    user_id: Optional[int] = None
+) -> BrainOutput:
 
-    Extracts latest user message,
-    runs it through rule engine,
-    then applies policy + validation,
-    returns structured response.
-
-    Parameters:
-        inp (BrainInput): Structured conversation history
-
-    Returns:
-        BrainOutput: Reply + proposed actions
-    """
-
-    # -----------------------------------------------------------------
-    # 1. Extract Most Recent User Message
-    # -----------------------------------------------------------------
-
-    user_text: Optional[str] = None
-
-    for message in reversed(inp.messages):
-        if message.role == "user":
-            user_text = message.content
-            break
+    user_text = _latest_user_text(inp)
 
     if not user_text:
         raw = BrainOutput(reply="No user input detected.", proposed_actions=[])
-        # Even this goes through policy/validation for consistency.
         return validate_output(apply_policy(inp, raw))
 
-    # -----------------------------------------------------------------
-    # 2. Run Rule-Based Planner (MVP Mode)
-    # -----------------------------------------------------------------
+    # -------------------------------------------------------------
+    # Memory Retrieval
+    # -------------------------------------------------------------
 
-    reply, actions = propose_from_text(user_text)
+    memories: list[Any] = []
 
-    # -----------------------------------------------------------------
-    # 3. Convert Raw Dict Actions -> Typed ProposedAction
-    # -----------------------------------------------------------------
+    if db is not None and user_id is not None:
+        try:
+            memories = get_recent_memories(db, user_id, limit=MAX_MEMORY_ITEMS)
+        except Exception:
+            memories = []
 
-    structured_actions: list[ProposedAction] = []
-    for action in actions:
-        # Defensive conversion in case a rule emits malformed output
-        a_type = action.get("type")
-        a_args = action.get("args", {})
+    # -------------------------------------------------------------
+    # Deterministic Rule Actions
+    # -------------------------------------------------------------
 
-        if not isinstance(a_type, str):
-            continue
-        if not isinstance(a_args, dict):
-            a_args = {}
+    fallback_reply, raw_actions = propose_from_text(user_text)
+    structured_actions = _convert_actions(raw_actions)
 
-        structured_actions.append(ProposedAction(type=a_type, args=a_args))
+    # -------------------------------------------------------------
+    # LLM Reply
+    # -------------------------------------------------------------
 
-    # -----------------------------------------------------------------
-    # 4. Build Raw Output (Planner Output Only)
-    # -----------------------------------------------------------------
+    llm_reply = _generate_llm_reply(inp, user_text, memories)
+
+    reply = llm_reply if llm_reply else fallback_reply
+
+    # -------------------------------------------------------------
+    # Build Output
+    # -------------------------------------------------------------
 
     raw_output = BrainOutput(
         reply=reply,
-        proposed_actions=structured_actions
+        proposed_actions=structured_actions,
     )
-
-    # -----------------------------------------------------------------
-    # 5. Apply Policy Layer (role rules, academic integrity, tool allow-list)
-    # -----------------------------------------------------------------
 
     policy_output = apply_policy(inp, raw_output)
 
-    # -----------------------------------------------------------------
-    # 6. Validate Final Output (structure, empty reply, malformed actions)
-    # -----------------------------------------------------------------
-
-    final_output = validate_output(policy_output)
-
-    return final_output
+    return validate_output(policy_output)

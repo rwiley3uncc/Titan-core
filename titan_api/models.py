@@ -19,7 +19,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 
-from .db import Base
+from titan_core.db import Base
 
 
 # ---------------------------------------------------------------------

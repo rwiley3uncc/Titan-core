@@ -10,6 +10,8 @@ Architecture Role:
     - Mounts the Titan UI
     - Registers API routers
     - Provides health + root endpoints
+    - Creates database tables
+    - Seeds a default development user
 
 Run (from project root):
     uvicorn titan_core.main:app --reload
@@ -17,11 +19,6 @@ Run (from project root):
 Access:
     Backend root: http://127.0.0.1:8000
     UI:           http://127.0.0.1:8000/ui/index.html
-
-Author:
-    Ron Wiley
-Project:
-    Titan AI - Personal Assistant Core
 """
 
 from __future__ import annotations
@@ -31,9 +28,12 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
-# Controller routers
-from titan_core.api.chat import router as chat_router
+from titan_api import models
+from titan_api.chat import router as chat_router
+from titan_api.models import User
+from titan_core.db import Base, SessionLocal, engine
 
 
 # ---------------------------------------------------------------------
@@ -46,14 +46,15 @@ app = FastAPI(
     description="Titan Personal AI Assistant",
 )
 
+# Create database tables on startup/import
+Base.metadata.create_all(bind=engine)
+
 
 # ---------------------------------------------------------------------
 # Directory Configuration
 # ---------------------------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent
-
-# UI folder lives one level up from titan_core
 UI_DIR = BASE_DIR.parent / "titan_ui"
 
 
@@ -100,5 +101,41 @@ def health_check() -> dict:
     return {
         "status": "ok",
         "service": "titan-core",
-        "mode": "personal-assistant"
+        "mode": "personal-assistant",
     }
+
+
+# ---------------------------------------------------------------------
+# Development Seed Route
+# ---------------------------------------------------------------------
+
+@app.post("/seed", response_class=JSONResponse)
+def seed_default_user() -> dict:
+    db: Session = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.username == "ron").first()
+        if existing:
+            return {
+                "status": "ok",
+                "message": "Default user already exists.",
+                "username": existing.username,
+                "role": existing.role,
+            }
+
+        user = User(
+            username="ron",
+            password_hash="dev-only-password",
+            role="owner",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        return {
+            "status": "ok",
+            "message": "Default user created.",
+            "username": user.username,
+            "role": user.role,
+        }
+    finally:
+        db.close()

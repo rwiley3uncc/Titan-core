@@ -12,13 +12,6 @@ Architecture Role:
     - Provides health + root endpoints
     - Creates database tables
     - Seeds a default development user
-
-Run (from project root):
-    uvicorn titan_core.main:app --reload
-
-Access:
-    Backend root: http://127.0.0.1:8000
-    UI:           http://127.0.0.1:8000/ui/index.html
 """
 
 from __future__ import annotations
@@ -30,57 +23,34 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from titan_core.api.execute import router as execute_router
-import titan_core.models
 from titan_core.api.chat import router as chat_router
-from titan_core.models import User
+from titan_core.api.execute import router as execute_router
+from titan_core.api.sitrep import router as sitrep_router
 from titan_core.db import Base, SessionLocal, engine
+from titan_core.models import User
+import titan_core.models
 
-
-# ---------------------------------------------------------------------
-# Application Initialization
-# ---------------------------------------------------------------------
 
 app = FastAPI(
     title="Titan Core",
-    version="0.1.0",
+    version="0.2.0",
     description="Titan Personal AI Assistant",
 )
 
-# Create database tables on startup/import
 Base.metadata.create_all(bind=engine)
-
-
-# ---------------------------------------------------------------------
-# Directory Configuration
-# ---------------------------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent
 UI_DIR = BASE_DIR.parent / "titan_ui"
-
-
-# ---------------------------------------------------------------------
-# Static UI Mount
-# ---------------------------------------------------------------------
 
 if UI_DIR.exists():
     app.mount("/ui", StaticFiles(directory=UI_DIR, html=True), name="ui")
 else:
     print(f"[WARNING] titan_ui folder not found at: {UI_DIR}")
 
-
-# ---------------------------------------------------------------------
-# API Routers
-# ---------------------------------------------------------------------
-
 app.include_router(chat_router, prefix="/api")
-
 app.include_router(execute_router, prefix="/api")
+app.include_router(sitrep_router, prefix="/api")
 
-
-# ---------------------------------------------------------------------
-# Root Endpoint
-# ---------------------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
 def root() -> str:
@@ -90,14 +60,11 @@ def root() -> str:
     <ul>
       <li><a href="/ui/index.html">Open Titan Interface</a></li>
       <li><a href="/health">Health Check</a></li>
-      <li><a href="/api/chat">API Endpoint</a></li>
+      <li><a href="/api/chat">Chat API</a></li>
+      <li><a href="/api/sitrep">Sitrep API</a></li>
     </ul>
     """
 
-
-# ---------------------------------------------------------------------
-# Health Check
-# ---------------------------------------------------------------------
 
 @app.get("/health", response_class=JSONResponse)
 def health_check() -> dict:
@@ -105,12 +72,9 @@ def health_check() -> dict:
         "status": "ok",
         "service": "titan-core",
         "mode": "personal-assistant",
+        "features": ["chat", "memory", "sitrep", "planning"],
     }
 
-
-# ---------------------------------------------------------------------
-# Development Seed Route
-# ---------------------------------------------------------------------
 
 @app.post("/seed", response_class=JSONResponse)
 def seed_default_user() -> dict:

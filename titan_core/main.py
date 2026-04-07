@@ -30,6 +30,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
+from titan_api.execute import router as execute_router
 from titan_api import models
 from titan_api.chat import router as chat_router
 from titan_api.models import User
@@ -73,6 +74,8 @@ else:
 # ---------------------------------------------------------------------
 
 app.include_router(chat_router, prefix="/api")
+
+app.include_router(execute_router, prefix="/api")
 
 
 # ---------------------------------------------------------------------

@@ -457,9 +457,23 @@ def chat(
         top_action = actions[0]
         action_type = top_action.get("type", "action")
 
-        if action_type == "open_app":
+        if action_type == "system_info":
+            info_type = top_action.get("info")
+            value = top_action.get("value")
+
+            if info_type == "time":
+                reply = f"It is {value}."
+
+            elif info_type == "date":
+                reply = f"Today is {value}."
+
+            else:
+                reply = str(value)
+
+        elif action_type == "open_app":
             app_name = top_action.get("app", "that app")
             reply = f"I can open {app_name}."
+
         else:
             reply = "I can perform that action."
 

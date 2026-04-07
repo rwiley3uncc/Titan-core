@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from titan_core.tools import get_time, get_date
 
 # ---------------------------------------------------------------------
 # App aliases
@@ -138,6 +139,33 @@ def extract_after_prefix(text: str, prefixes: list[str]) -> str:
 # Rule functions
 # ---------------------------------------------------------------------
 
+def rule_system_info(user_text: str) -> dict[str, Any] | None:
+    text = normalize_text(user_text)
+
+    if "time" in text:
+        return {
+            "type": "system_info",
+            "info": "time",
+            "value": get_time(),
+            "confidence": 0.99,
+            "source": "rules",
+            "reason": "Detected time request.",
+            "text": user_text,
+        }
+
+    if "date" in text or "day" in text:
+        return {
+            "type": "system_info",
+            "info": "date",
+            "value": get_date(),
+            "confidence": 0.99,
+            "source": "rules",
+            "reason": "Detected date request.",
+            "text": user_text,
+        }
+
+    return None
+
 def rule_open_app(user_text: str) -> dict[str, Any] | None:
     normalized = normalize_text(user_text)
 
@@ -241,6 +269,10 @@ def propose_actions(user_text: str) -> list[dict[str, Any]]:
     if not normalize_text(user_text):
         return proposals
 
+    system_info_action = rule_system_info(user_text)
+    if system_info_action:
+        proposals.append(system_info_action)
+
     open_app_action = rule_open_app(user_text)
     if open_app_action:
         proposals.append(open_app_action)
@@ -256,7 +288,6 @@ def propose_actions(user_text: str) -> list[dict[str, Any]]:
     proposals.sort(key=lambda item: item.get("confidence", 0), reverse=True)
     return proposals
 
-
 def propose_from_text(user_text: str) -> tuple[str, list[dict[str, Any]]]:
     text = normalize_text(user_text)
     actions = propose_actions(user_text)
@@ -268,6 +299,16 @@ def propose_from_text(user_text: str) -> tuple[str, list[dict[str, Any]]]:
         top_action = actions[0]
         action_type = top_action.get("type")
 
+        if action_type == "system_info":
+            info_type = top_action.get("info")
+            value = top_action.get("value")
+
+            if info_type == "time":
+                return f"It is {value}.", actions
+
+            if info_type == "date":
+                return f"Today is {value}.", actions
+            
         if action_type == "open_app":
             app_name = top_action.get("app", "that app")
             return f"I can open {app_name}.", actions

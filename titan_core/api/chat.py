@@ -24,8 +24,8 @@ from sqlalchemy.orm import Session
 
 from titan_core.db import get_db
 from titan_core.schemas import BrainInput, ChatMessage
-from titan_api.models import User, MemoryItem
-from titan_api.schemas import ChatRequest, ChatResponse
+from titan_core.models import User, MemoryItem
+from titan_core.schemas import ChatRequest, ChatResponse
 from titan_core.brain import run_brain
 from titan_core.rules import propose_actions
 

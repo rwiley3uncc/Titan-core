@@ -30,10 +30,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from titan_api.execute import router as execute_router
-from titan_api import models
-from titan_api.chat import router as chat_router
-from titan_api.models import User
+from titan_core.api.execute import router as execute_router
+import titan_core.models
+from titan_core.api.chat import router as chat_router
+from titan_core.models import User
 from titan_core.db import Base, SessionLocal, engine
 
 

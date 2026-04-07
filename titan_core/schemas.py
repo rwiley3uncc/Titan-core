@@ -27,3 +27,13 @@ class BrainInput(BaseModel):
 class BrainOutput(BaseModel):
     reply: str
     proposed_actions: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class ChatRequest(BaseModel):
+    message: str
+    mode: Optional[str] = "personal_general"
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    proposed_actions: List[Dict[str, Any]] = Field(default_factory=list)

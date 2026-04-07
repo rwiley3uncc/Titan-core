@@ -16,7 +16,7 @@ Capabilities:
 """
 
 from sqlalchemy.orm import Session
-from titan_api.models import MemoryItem
+from titan_core.models import MemoryItem
 
 
 # ------------------------------------------------------------

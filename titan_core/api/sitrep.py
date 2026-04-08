@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query
 
 from titan_core.canvas_feed import import_canvas_ics_from_url
 from titan_core.config import settings
+from titan_core.outlook_feed import import_outlook_ics_from_url
 from titan_core.planning import PlannerItem
 from titan_core.sitrep import build_sitrep
 
@@ -44,10 +45,17 @@ def get_sitrep(weather_summary: str | None = Query(default=None), now_iso: str |
     else:
         warnings.append("Canvas ICS feed is not configured. Set TITAN_CANVAS_ICS_URL in your environment.")
 
-    if not settings.outlook_calendar_email:
-        warnings.append("Outlook calendar integration is not configured yet. Set TITAN_OUTLOOK_CALENDAR_EMAIL for the target account.")
+    if settings.outlook_ics_url:
+        try:
+            outlook_result = import_outlook_ics_from_url(settings.outlook_ics_url)
+            all_items.extend(outlook_result.items)
+            source_counts["outlook_ics"] = len(outlook_result.items)
+        except Exception as exc:
+            warnings.append(f"Outlook ICS import failed: {exc}")
+    elif settings.outlook_calendar_email:
+        warnings.append("Outlook target account is set, but TITAN_OUTLOOK_ICS_URL is missing.")
     else:
-        warnings.append("Live Outlook sync is not wired yet; this endpoint currently uses Canvas-derived items plus placeholders for life scheduling.")
+        warnings.append("Outlook calendar integration is not configured yet. Set TITAN_OUTLOOK_CALENDAR_EMAIL and TITAN_OUTLOOK_ICS_URL.")
 
     sitrep = build_sitrep(all_items, now=now, weather_summary=weather_summary, block_minutes=settings.study_block_minutes)
     return {
@@ -59,12 +67,22 @@ def get_sitrep(weather_summary: str | None = Query(default=None), now_iso: str |
             "scheduling_mode": "suggest_first",
             "outlook_calendar_email": settings.outlook_calendar_email,
             "canvas_feed_configured": bool(settings.canvas_ics_url),
+            "outlook_feed_configured": bool(settings.outlook_ics_url),
         },
         "warnings": warnings,
         "source_counts": source_counts,
         "today": [_serialize_item(item) for item in sitrep.today_items],
         "must_do_today": [_serialize_item(item) for item in sitrep.must_do_today],
         "still_open": [_serialize_item(item) for item in sitrep.still_open[:15]],
-        "suggested_blocks": [{"title": b.title, "starts_at": b.starts_at.isoformat(), "ends_at": b.ends_at.isoformat(), "reason": b.reason, "source_item_title": b.source_item_title} for b in sitrep.suggested_blocks],
+        "suggested_blocks": [
+            {
+                "title": b.title,
+                "starts_at": b.starts_at.isoformat(),
+                "ends_at": b.ends_at.isoformat(),
+                "reason": b.reason,
+                "source_item_title": b.source_item_title,
+            }
+            for b in sitrep.suggested_blocks
+        ],
         "weather_summary": sitrep.weather_summary,
     }

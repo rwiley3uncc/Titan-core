@@ -11,6 +11,7 @@ class TitanSettings:
     study_block_minutes: int = int(os.getenv("TITAN_STUDY_BLOCK_MINUTES", "30"))
     canvas_ics_url: str | None = os.getenv("TITAN_CANVAS_ICS_URL") or None
     outlook_calendar_email: str | None = os.getenv("TITAN_OUTLOOK_CALENDAR_EMAIL") or None
+    outlook_ics_url: str | None = os.getenv("TITAN_OUTLOOK_ICS_URL") or None
 
 
 settings = TitanSettings()

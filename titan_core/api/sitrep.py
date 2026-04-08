@@ -9,6 +9,7 @@ from titan_core.config import settings
 from titan_core.outlook_feed import import_outlook_ics_from_url
 from titan_core.planning import PlannerItem
 from titan_core.sitrep import build_sitrep
+from titan_core.weather import fetch_weather_summary
 
 router = APIRouter()
 
@@ -28,8 +29,29 @@ def _serialize_item(item: PlannerItem) -> dict:
     }
 
 
+def _spoken_text(data: dict) -> str:
+    must_do = data.get("must_do_today", [])
+    blocks = data.get("suggested_blocks", [])
+    today = data.get("today", [])
+    weather = data.get("weather_summary")
+    lines = ["Morning sitrep."]
+    if weather:
+        lines.append(weather)
+    lines.append(f"You have {len(today)} scheduled items today.")
+    lines.append(f"You have {len(must_do)} must-do items today.")
+    if must_do:
+        lines.append(f"Top must do: {must_do[0].get('title', 'unnamed task')}.")
+    if blocks:
+        lines.append(f"Suggested next study block: {blocks[0].get('title', 'study block')} at {blocks[0].get('starts_at', '')}.")
+    return " ".join(lines)
+
+
 @router.get("/sitrep")
-def get_sitrep(weather_summary: str | None = Query(default=None), now_iso: str | None = Query(default=None)):
+def get_sitrep(
+    weather_summary: str | None = Query(default=None),
+    now_iso: str | None = Query(default=None),
+    weather_location: str | None = Query(default="Charlotte"),
+):
     now = datetime.fromisoformat(now_iso) if now_iso else datetime.now()
     warnings: list[str] = []
     all_items: list[PlannerItem] = []
@@ -57,8 +79,15 @@ def get_sitrep(weather_summary: str | None = Query(default=None), now_iso: str |
     else:
         warnings.append("Outlook calendar integration is not configured yet. Set TITAN_OUTLOOK_CALENDAR_EMAIL and TITAN_OUTLOOK_ICS_URL.")
 
+    if weather_summary is None:
+        try:
+            weather_summary = fetch_weather_summary(weather_location or "Charlotte")
+        except Exception as exc:
+            warnings.append(f"Weather fetch failed: {exc}")
+            weather_summary = None
+
     sitrep = build_sitrep(all_items, now=now, weather_summary=weather_summary, block_minutes=settings.study_block_minutes)
-    return {
+    payload = {
         "generated_at": sitrep.generated_at.isoformat(),
         "configuration": {
             "sitrep_time": settings.sitrep_time,
@@ -86,3 +115,5 @@ def get_sitrep(weather_summary: str | None = Query(default=None), now_iso: str |
         ],
         "weather_summary": sitrep.weather_summary,
     }
+    payload["spoken_text"] = _spoken_text(payload)
+    return payload

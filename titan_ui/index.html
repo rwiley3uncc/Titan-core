@@ -4,337 +4,496 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Titan | Personal Assistant</title>
-
   <style>
-    body{
-      margin:0;
-      font-family:Arial, sans-serif;
-      background:#f4f6f8;
-      color:#111;
+    :root {
+      --bg: #f3f5f7;
+      --panel: #ffffff;
+      --border: #d8dde3;
+      --text: #111827;
+      --muted: #6b7280;
+      --header: #0f172a;
+      --accent: #111827;
     }
-
-    .header{
-      background:#0c0c0c;
-      color:white;
-      padding:20px 30px;
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
     }
-
-    .header h1{
-      margin:0;
-      font-size:22px;
+    .header {
+      background: var(--header);
+      color: white;
+      padding: 20px 24px;
     }
-
-    .sub{
-      font-size:13px;
-      opacity:.7;
+    .header h1 {
+      margin: 0 0 6px 0;
+      font-size: 24px;
     }
-
-    .container{
-      max-width:1000px;
-      margin:30px auto;
-      padding:0 20px;
+    .sub {
+      font-size: 13px;
+      opacity: .8;
     }
-
-    .panel{
-      background:white;
-      border-radius:6px;
-      border:1px solid #ddd;
-      padding:18px;
-      margin-bottom:20px;
+    .container {
+      max-width: 1240px;
+      margin: 24px auto;
+      padding: 0 16px 32px;
     }
-
-    h3{
-      margin-top:0;
-      margin-bottom:14px;
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
     }
-
-    #chat{
-      height:350px;
-      overflow:auto;
-      white-space:pre-wrap;
-      background:#fafafa;
-      border:1px solid #ddd;
-      border-radius:4px;
-      padding:10px;
-      font-family:Consolas, monospace;
-      line-height:1.45;
+    .topbar-left {
+      font-size: 14px;
+      color: var(--muted);
     }
-
-    textarea{
-      width:100%;
-      margin-top:10px;
-      padding:10px;
-      border-radius:4px;
-      border:1px solid #ccc;
-      resize:vertical;
-      min-height:72px;
-      box-sizing:border-box;
-      font-family:Arial, sans-serif;
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
     }
-
-    .button-row{
-      display:flex;
-      gap:10px;
-      margin-top:10px;
+    button {
+      padding: 10px 14px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
     }
-
-    button{
-      padding:8px 16px;
-      background:#111;
-      color:white;
-      border:none;
-      border-radius:4px;
-      cursor:pointer;
+    button:hover { background: #263244; }
+    .dashboard {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 16px;
+      align-items: start;
     }
-
-    button:hover{
-      background:#333;
+    .left-column, .right-column {
+      display: grid;
+      gap: 16px;
     }
-
-    #actions{
-      font-family:Consolas, monospace;
-      background:#fafafa;
-      border:1px solid #ddd;
-      padding:10px;
-      border-radius:4px;
-      min-height:24px;
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
     }
-
-    .action-line{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:12px;
-      padding:8px 0;
-      border-bottom:1px solid #eee;
+    .panel h2, .panel h3 {
+      margin: 0 0 12px 0;
+      font-size: 18px;
     }
-
-    .action-line:last-child{
-      border-bottom:none;
+    .mini {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
     }
-
-    .action-text{
-      flex:1;
-      white-space:pre-wrap;
-      word-break:break-word;
+    .stat {
+      font-size: 14px;
+      color: var(--muted);
+      margin-top: 6px;
     }
-
-    .execute-btn{
-      flex-shrink:0;
+    .sitrep-text {
+      white-space: pre-wrap;
+      line-height: 1.5;
+      font-size: 15px;
     }
-
-    .footer{
-      text-align:center;
-      font-size:12px;
-      color:#888;
-      margin:40px 0 30px;
+    .list {
+      display: grid;
+      gap: 10px;
+    }
+    .item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fafafa;
+    }
+    .item-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .item-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .grid-two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    #chat {
+      height: 260px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: Consolas, monospace;
+      line-height: 1.45;
+    }
+    textarea {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      resize: vertical;
+      min-height: 72px;
+      font-family: Arial, sans-serif;
+    }
+    #actions {
+      font-family: Consolas, monospace;
+      background: #fafafa;
+      border: 1px solid var(--border);
+      padding: 10px;
+      border-radius: 8px;
+      min-height: 24px;
+    }
+    .action-line {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .action-line:last-child { border-bottom: none; }
+    .action-text {
+      flex: 1;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      color: #888;
+      margin: 36px 0 12px;
+    }
+    .warning {
+      color: #92400e;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .empty {
+      color: var(--muted);
+      font-size: 14px;
+      font-style: italic;
+    }
+    @media (max-width: 980px) {
+      .dashboard, .grid-two { grid-template-columns: 1fr; }
     }
   </style>
 </head>
-
 <body>
-
   <div class="header">
     <h1>Titan</h1>
-    <div class="sub">Personal AI Assistant</div>
+    <div class="sub">School + Life Dashboard</div>
   </div>
 
   <div class="container">
-
-    <div class="panel">
-      <h3>Conversation</h3>
-
-      <div id="chat">TITAN: Online. How can I help?</div>
-
-      <textarea id="msg" rows="3" placeholder="Type a message..."></textarea>
-
+    <div class="topbar">
+      <div class="topbar-left">
+        <div><strong>Morning Sitrep:</strong> 08:00</div>
+        <div id="lastUpdated">Last updated: not loaded yet</div>
+      </div>
       <div class="button-row">
-        <button id="sendBtn" type="button">Send</button>
-        <button id="newChatBtn" type="button">New Chat</button>
+        <button id="refreshSitrepBtn" type="button">Refresh Sitrep</button>
+        <button id="speakSitrepBtn" type="button">Read Sitrep</button>
+        <button id="stopVoiceBtn" type="button">Stop Voice</button>
       </div>
     </div>
 
-    <div class="panel">
-      <h3>Proposed Actions</h3>
-      <div id="actions">(none)</div>
+    <div class="dashboard">
+      <div class="left-column">
+        <div class="panel">
+          <h2>Morning Sitrep</h2>
+          <div class="mini">What needs attention today and what is still open</div>
+          <div id="warnings"></div>
+          <div id="sitrepText" class="sitrep-text">Loading sitrep...</div>
+          <div id="weatherLine" class="stat"></div>
+        </div>
+
+        <div class="grid-two">
+          <div class="panel">
+            <h3>Today's Schedule</h3>
+            <div id="todayList" class="list"></div>
+          </div>
+          <div class="panel">
+            <h3>Must Do Today</h3>
+            <div id="mustDoList" class="list"></div>
+          </div>
+        </div>
+
+        <div class="grid-two">
+          <div class="panel">
+            <h3>Still Open</h3>
+            <div id="stillOpenList" class="list"></div>
+          </div>
+          <div class="panel">
+            <h3>Suggested Study Blocks</h3>
+            <div id="suggestedBlocksList" class="list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-column">
+        <div class="panel">
+          <h3>Conversation</h3>
+          <div id="chat">TITAN: Online. How can I help?</div>
+          <textarea id="msg" rows="3" placeholder="Type a message..."></textarea>
+          <div class="button-row" style="margin-top:10px;">
+            <button id="sendBtn" type="button">Send</button>
+            <button id="newChatBtn" type="button">New Chat</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Proposed Actions</h3>
+          <div id="actions">(none)</div>
+        </div>
+      </div>
     </div>
-
   </div>
 
-  <div class="footer">
-    Titan Core — Personal Assistant Prototype
-  </div>
+  <div class="footer">Titan Core — Dashboard + Chat Prototype</div>
 
   <script>
     let currentChatId = null;
-
-    function createChat() {
-      currentChatId = "chat_" + Date.now();
-
-      const chat = document.getElementById("chat");
-      const actions = document.getElementById("actions");
-      const input = document.getElementById("msg");
-
-      chat.textContent = "TITAN: Online. How can I help?";
-      actions.textContent = "(none)";
-      input.value = "";
-    }
+    let latestSitrepPayload = null;
 
     function ensureChat() {
       if (!currentChatId) {
-        createChat();
+        currentChatId = 'chat_' + Date.now();
       }
       return currentChatId;
     }
 
+    function createChat() {
+      currentChatId = 'chat_' + Date.now();
+      document.getElementById('chat').textContent = 'TITAN: Online. How can I help?';
+      document.getElementById('actions').textContent = '(none)';
+      document.getElementById('msg').value = '';
+    }
+
     function appendChatLine(text) {
-      const chat = document.getElementById("chat");
-      chat.textContent += "\n" + text;
+      const chat = document.getElementById('chat');
+      chat.textContent += '\n' + text;
       chat.scrollTop = chat.scrollHeight;
     }
 
-    function renderActions(proposedActions) {
-      const actionsDiv = document.getElementById("actions");
+    function formatDateTime(value) {
+      if (!value) return 'No time listed';
+      try {
+        return new Date(value).toLocaleString();
+      } catch {
+        return value;
+      }
+    }
 
-      if (!proposedActions || proposedActions.length === 0) {
-        actionsDiv.textContent = "(none)";
+    function renderList(containerId, items, formatter) {
+      const container = document.getElementById(containerId);
+      if (!items || items.length === 0) {
+        container.innerHTML = '<div class="empty">Nothing to show right now.</div>';
         return;
       }
+      container.innerHTML = items.map(formatter).join('');
+    }
 
-      actionsDiv.innerHTML = "";
+    function itemCard(item) {
+      return `
+        <div class="item">
+          <div class="item-title">${item.title || 'Untitled'}</div>
+          <div class="item-meta">
+            ${item.kind ? 'Type: ' + item.kind + '<br>' : ''}
+            ${item.course_name ? 'Course: ' + item.course_name + '<br>' : ''}
+            ${item.starts_at ? 'Starts: ' + formatDateTime(item.starts_at) + '<br>' : ''}
+            ${item.due_at ? 'Due/Ends: ' + formatDateTime(item.due_at) + '<br>' : ''}
+            ${item.source ? 'Source: ' + item.source : ''}
+          </div>
+        </div>`;
+    }
 
+    function blockCard(block) {
+      return `
+        <div class="item">
+          <div class="item-title">${block.title || 'Study Block'}</div>
+          <div class="item-meta">
+            ${formatDateTime(block.starts_at)} - ${formatDateTime(block.ends_at)}<br>
+            ${block.reason || ''}${block.source_item_title ? '<br>From: ' + block.source_item_title : ''}
+          </div>
+        </div>`;
+    }
+
+    function buildSitrepText(data) {
+      const todayCount = (data.today || []).length;
+      const mustCount = (data.must_do_today || []).length;
+      const openCount = (data.still_open || []).length;
+      const blockCount = (data.suggested_blocks || []).length;
+      const firstMust = mustCount ? data.must_do_today[0].title : 'No urgent must-do item right now.';
+      const firstBlock = blockCount ? data.suggested_blocks[0].title : 'No suggested study block yet.';
+
+      return [
+        'Morning Sitrep',
+        '',
+        `Today has ${todayCount} scheduled item${todayCount === 1 ? '' : 's'}.`,
+        `You have ${mustCount} item${mustCount === 1 ? '' : 's'} that need attention today.`,
+        `There are ${openCount} still-open school task${openCount === 1 ? '' : 's'}.`,
+        `Top must-do: ${firstMust}`,
+        `Suggested next block: ${firstBlock}`
+      ].join('\n');
+    }
+
+    function renderWarnings(warnings) {
+      const target = document.getElementById('warnings');
+      if (!warnings || warnings.length === 0) {
+        target.innerHTML = '';
+        return;
+      }
+      target.innerHTML = warnings.map(w => `<div class="warning">${w}</div>`).join('');
+    }
+
+    async function loadSitrep() {
+      try {
+        const response = await fetch('/api/sitrep');
+        if (!response.ok) {
+          document.getElementById('sitrepText').textContent = 'Failed to load sitrep.';
+          return;
+        }
+        const data = await response.json();
+        latestSitrepPayload = data;
+        document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleString();
+        document.getElementById('sitrepText').textContent = buildSitrepText(data);
+        document.getElementById('weatherLine').textContent = data.weather_summary ? ('Weather: ' + data.weather_summary) : 'Weather: not connected yet';
+        renderWarnings(data.warnings || []);
+        renderList('todayList', data.today || [], itemCard);
+        renderList('mustDoList', data.must_do_today || [], itemCard);
+        renderList('stillOpenList', data.still_open || [], itemCard);
+        renderList('suggestedBlocksList', data.suggested_blocks || [], blockCard);
+      } catch (error) {
+        console.error(error);
+        document.getElementById('sitrepText').textContent = 'Error contacting sitrep backend.';
+      }
+    }
+
+    function speakSitrep() {
+      if (!('speechSynthesis' in window)) {
+        alert('Speech synthesis is not supported in this browser.');
+        return;
+      }
+      const text = document.getElementById('sitrepText').textContent;
+      if (!text) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function stopVoice() {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    }
+
+    function renderActions(proposedActions) {
+      const actionsDiv = document.getElementById('actions');
+      if (!proposedActions || proposedActions.length === 0) {
+        actionsDiv.textContent = '(none)';
+        return;
+      }
+      actionsDiv.innerHTML = '';
       proposedActions.forEach((action, index) => {
-        const line = document.createElement("div");
-        line.className = "action-line";
-
-        const type = action.type || action.action || "unknown";
-        const app = action.app ? ` | app: ${action.app}` : "";
-        const info = action.info ? ` | info: ${action.info}` : "";
-        const value = action.value ? ` | value: ${action.value}` : "";
-        const confidence = action.confidence !== undefined
-          ? ` | confidence: ${action.confidence}`
-          : "";
-        const reason = action.reason ? ` | reason: ${action.reason}` : "";
-
-        const text = document.createElement("div");
-        text.className = "action-text";
-        text.textContent =
-          `${index + 1}. ${type}${app}${info}${value}${confidence}${reason}`;
-
+        const line = document.createElement('div');
+        line.className = 'action-line';
+        const text = document.createElement('div');
+        text.className = 'action-text';
+        text.textContent = `${index + 1}. ${action.type || 'unknown'}${action.app ? ' | app: ' + action.app : ''}${action.info ? ' | info: ' + action.info : ''}${action.value ? ' | value: ' + action.value : ''}${action.reason ? ' | reason: ' + action.reason : ''}`;
         line.appendChild(text);
-
-        const isExecutable =
-          type === "open_app" ||
-          type === "open_url";
-
+        const isExecutable = action.type === 'open_app' || action.type === 'open_url';
         if (isExecutable) {
-          const btn = document.createElement("button");
-          btn.className = "execute-btn";
-          btn.type = "button";
-          btn.textContent = "Execute";
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = 'Execute';
           btn.onclick = () => executeAction(action);
           line.appendChild(btn);
         }
-
         actionsDiv.appendChild(line);
       });
     }
 
     async function sendMsg() {
-      const input = document.getElementById("msg");
+      const input = document.getElementById('msg');
       const text = input.value.trim();
-
-      if (!text) {
-        return;
-      }
-
+      if (!text) return;
       ensureChat();
-      appendChatLine("YOU: " + text);
-      input.value = "";
-
+      appendChatLine('YOU: ' + text);
+      input.value = '';
       try {
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            message: text,
-            mode: "personal_general"
-          })
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({message: text, mode: 'personal_general'})
         });
-
         if (!response.ok) {
-          appendChatLine("TITAN: Backend error: " + response.status);
+          appendChatLine('TITAN: Backend error: ' + response.status);
           renderActions([]);
           return;
         }
-
         const data = await response.json();
-        console.log("CHAT RESPONSE:", data);
-
-        const reply = data.reply || "No reply returned.";
-        const proposedActions = data.proposed_actions || [];
-
-        appendChatLine("TITAN: " + reply);
-        renderActions(proposedActions);
-
+        appendChatLine('TITAN: ' + (data.reply || 'No reply returned.'));
+        renderActions(data.proposed_actions || []);
       } catch (error) {
         console.error(error);
-        appendChatLine("TITAN: Error contacting backend.");
+        appendChatLine('TITAN: Error contacting backend.');
         renderActions([]);
       }
     }
 
     async function executeAction(action) {
       try {
-        const response = await fetch("/api/execute", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+        const response = await fetch('/api/execute', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(action)
         });
-
         if (!response.ok) {
-          appendChatLine("TITAN: Execute failed: " + response.status);
+          appendChatLine('TITAN: Execute failed: ' + response.status);
           return;
         }
-
         const result = await response.json();
-        console.log("EXECUTION RESULT:", result);
-
-        if (result.status === "executed") {
-          appendChatLine("TITAN: Action executed.");
-        } else if (result.status === "unknown_app") {
-          appendChatLine("TITAN: I do not know how to open that app yet.");
-        } else if (result.status === "unknown_action") {
-          appendChatLine("TITAN: I do not know how to execute that action yet.");
-        } else if (result.message) {
-          appendChatLine("TITAN: " + result.message);
-        } else {
-          appendChatLine("TITAN: Action finished.");
-        }
+        appendChatLine('TITAN: ' + (result.message || 'Action finished.'));
       } catch (error) {
         console.error(error);
-        appendChatLine("TITAN: Failed to execute action.");
+        appendChatLine('TITAN: Failed to execute action.');
       }
     }
 
-    document.getElementById("sendBtn").addEventListener("click", sendMsg);
-    document.getElementById("newChatBtn").addEventListener("click", createChat);
-
-    document.getElementById("msg").addEventListener("keydown", function(event) {
-      if (event.key === "Enter" && !event.shiftKey) {
+    document.getElementById('sendBtn').addEventListener('click', sendMsg);
+    document.getElementById('newChatBtn').addEventListener('click', createChat);
+    document.getElementById('refreshSitrepBtn').addEventListener('click', loadSitrep);
+    document.getElementById('speakSitrepBtn').addEventListener('click', speakSitrep);
+    document.getElementById('stopVoiceBtn').addEventListener('click', stopVoice);
+    document.getElementById('msg').addEventListener('keydown', function(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMsg();
       }
     });
 
-    window.addEventListener("load", function() {
+    window.addEventListener('load', function() {
       ensureChat();
+      loadSitrep();
     });
   </script>
-
 </body>
 </html>

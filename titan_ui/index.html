@@ -4,31 +4,237 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Titan | Personal Assistant</title>
-  <style>
-    :root { --bg:#f3f5f7; --panel:#fff; --border:#d8dde3; --text:#111827; --muted:#6b7280; --header:#0f172a; --accent:#111827; }
-    *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text)}
-    .header{background:var(--header);color:#fff;padding:20px 24px}.header h1{margin:0 0 6px;font-size:24px}.sub{font-size:13px;opacity:.8}
-    .container{max-width:1240px;margin:24px auto;padding:0 16px 32px}.topbar{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin-bottom:16px}
-    .topbar-left{font-size:14px;color:var(--muted)} .button-row{display:flex;flex-wrap:wrap;gap:10px}
-    button{padding:10px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px} button:hover{background:#263244}
-    .dashboard{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;align-items:start}.left-column,.right-column{display:grid;gap:16px}
-    .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
-    .panel h2,.panel h3{margin:0 0 12px;font-size:18px}.mini{color:var(--muted);font-size:13px;margin-bottom:8px}.stat{font-size:14px;color:var(--muted);margin-top:6px}
-    .sitrep-text{white-space:pre-wrap;line-height:1.5;font-size:15px}.list{display:grid;gap:10px}.item{border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fafafa}
-    .item-title{font-weight:700;margin-bottom:4px}.item-meta{color:var(--muted);font-size:13px;line-height:1.4}.grid-two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    #chat{height:260px;overflow:auto;white-space:pre-wrap;background:#fafafa;border:1px solid var(--border);border-radius:8px;padding:10px;font-family:Consolas,monospace;line-height:1.45}
-    textarea{width:100%;margin-top:10px;padding:10px;border-radius:8px;border:1px solid var(--border);resize:vertical;min-height:72px;font-family:Arial,sans-serif}
-    #actions{font-family:Consolas,monospace;background:#fafafa;border:1px solid var(--border);padding:10px;border-radius:8px;min-height:24px}
-    .action-line{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #eee}.action-line:last-child{border-bottom:none}.action-text{flex:1;white-space:pre-wrap;word-break:break-word}
-    .footer{text-align:center;font-size:12px;color:#888;margin:36px 0 12px}.warning{color:#92400e;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:8px}.empty{color:var(--muted);font-size:14px;font-style:italic}
-    @media (max-width:980px){.dashboard,.grid-two{grid-template-columns:1fr}}
-  </style>
+ <style>
+
+:root {
+  --bg: #f3f5f7;
+  --panel: #ffffff;
+  --border: #d8dde3;
+  --text: #111827;
+  --muted: #6b7280;
+  --header: #0f172a;
+  --accent: #111827;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+
+  font-family: Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* HEADER */
+
+.header {
+  background: var(--header);
+  color: #fff;
+  padding: 20px 24px;
+}
+
+.header h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+
+.sub {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* CONTAINER */
+
+.container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 20px;
+
+  height: calc(100vh - 96px);
+  overflow: hidden;
+}
+
+/* TOP BAR */
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  padding: 10px 14px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* DASHBOARD */
+
+.dashboard {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 16px;
+
+  height: calc(100% - 70px);
+}
+
+/* COLUMNS */
+
+.left-column,
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  height: 100%;
+}
+
+/* PANELS */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+
+  overflow: hidden;
+}
+
+.panel h2,
+.panel h3 {
+  margin-top: 0;
+}
+
+/* TWO COLUMN GRID */
+
+.grid-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+
+  flex: 1;
+}
+
+/* LIST PANELS */
+
+.list-panel {
+  display: flex;
+  flex-direction: column;
+
+  height: 100%;
+}
+
+/* SCROLL WINDOW — THIS FIXES EVERYTHING */
+
+.list-window {
+  flex: 1;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  max-height: 260px;
+}
+
+/* ITEMS */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fafafa;
+}
+
+.item-title {
+  font-weight: bold;
+  margin-bottom: 3px;
+}
+
+.item-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* CHAT */
+
+#chat {
+  height: 260px;
+  overflow-y: auto;
+
+  background: #fafafa;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+
+  font-family: Consolas, monospace;
+}
+
+/* INPUT */
+
+textarea {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+/* ACTIONS */
+
+#actions {
+  background: #fafafa;
+  border: 1px solid var(--border);
+  padding: 10px;
+
+  border-radius: 8px;
+
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.footer {
+  text-align: center;
+  font-size: 12px;
+  color: #888;
+}
+
+</style>
 </head>
 <body>
-  <div class="header"><h1>Titan</h1><div class="sub">School + Life Dashboard</div></div>
+  <div class="header">
+    <h1>Titan</h1>
+    <div class="sub">TEST 999</div>
+  </div>
+
   <div class="container">
     <div class="topbar">
-      <div class="topbar-left"><div><strong>Morning Sitrep:</strong> 08:00</div><div id="lastUpdated">Last updated: not loaded yet</div></div>
+      <div class="topbar-left">
+        <div><strong>Morning Sitrep:</strong> 08:00</div>
+        <div id="lastUpdated">Last updated: not loaded yet</div>
+      </div>
+
       <div class="button-row">
         <button id="refreshSitrepBtn" type="button">Refresh Sitrep</button>
         <button id="speakSitrepBtn" type="button">Read Sitrep</button>
@@ -36,41 +242,367 @@
         <button id="voiceInputBtn" type="button">Voice Input</button>
       </div>
     </div>
+
     <div class="dashboard">
       <div class="left-column">
-        <div class="panel"><h2>Morning Sitrep</h2><div class="mini">What needs attention today and what is still open</div><div id="warnings"></div><div id="sitrepText" class="sitrep-text">Loading sitrep...</div><div id="weatherLine" class="stat"></div></div>
-        <div class="grid-two"><div class="panel"><h3>Today's Schedule</h3><div id="todayList" class="list"></div></div><div class="panel"><h3>Must Do Today</h3><div id="mustDoList" class="list"></div></div></div>
-        <div class="grid-two"><div class="panel"><h3>Still Open</h3><div id="stillOpenList" class="list"></div></div><div class="panel"><h3>Suggested Study Blocks</h3><div id="suggestedBlocksList" class="list"></div></div></div>
+        <div class="panel">
+          <h2>Morning Sitrep</h2>
+          <div class="mini">What needs attention today and what is still open</div>
+          <div id="warnings"></div>
+          <div id="sitrepText" class="sitrep-text">Loading sitrep...</div>
+          <div id="weatherLine" class="stat"></div>
+        </div>
+
+        <div class="grid-two">
+          <div class="panel list-panel">
+            <h3>Today's Schedule</h3>
+            <div class="list-window">
+              <div id="todayList" class="list"></div>
+            </div>
+          </div>
+
+          <div class="panel list-panel">
+            <h3>Must Do Today</h3>
+            <div class="list-window">
+              <div id="mustDoList" class="list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-two">
+          <div class="panel list-panel">
+            <h3>Still Open</h3>
+            <div class="list-window">
+              <div id="stillOpenList" class="list"></div>
+            </div>
+          </div>
+
+          <div class="panel list-panel">
+            <h3>Suggested Study Blocks</h3>
+            <div class="list-window">
+              <div id="suggestedBlocksList" class="list"></div>
+            </div>
+          </div>
+        </div>
       </div>
+
       <div class="right-column">
-        <div class="panel"><h3>Conversation</h3><div id="chat">TITAN: Online. How can I help?</div><textarea id="msg" rows="3" placeholder="Type a message or use Voice Input..."></textarea><div class="button-row" style="margin-top:10px;"><button id="sendBtn" type="button">Send</button><button id="newChatBtn" type="button">New Chat</button></div></div>
-        <div class="panel"><h3>Proposed Actions</h3><div id="actions">(none)</div></div>
+        <div class="panel">
+          <h3>Conversation</h3>
+          <div id="chat">TITAN: Online. How can I help?</div>
+          <textarea id="msg" rows="3" placeholder="Type a message or use Voice Input..."></textarea>
+          <div class="button-row" style="margin-top:10px;">
+            <button id="sendBtn" type="button">Send</button>
+            <button id="newChatBtn" type="button">New Chat</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Proposed Actions</h3>
+          <div id="actions">(none)</div>
+        </div>
       </div>
     </div>
+
+    <div class="footer">Titan Core — Dashboard + Chat Prototype</div>
   </div>
-  <div class="footer">Titan Core — Dashboard + Chat Prototype</div>
+
   <script>
-    let currentChatId = null; let latestSitrepPayload = null; let recognition = null;
-    function ensureChat(){ if(!currentChatId){ currentChatId='chat_'+Date.now(); } return currentChatId; }
-    function createChat(){ currentChatId='chat_'+Date.now(); document.getElementById('chat').textContent='TITAN: Online. How can I help?'; document.getElementById('actions').textContent='(none)'; document.getElementById('msg').value=''; }
-    function appendChatLine(text){ const chat=document.getElementById('chat'); chat.textContent+='\n'+text; chat.scrollTop=chat.scrollHeight; }
-    function formatDateTime(value){ if(!value) return 'No time listed'; try{return new Date(value).toLocaleString();}catch{return value;} }
-    function renderList(id,items,formatter){ const el=document.getElementById(id); if(!items||items.length===0){ el.innerHTML='<div class="empty">Nothing to show right now.</div>'; return;} el.innerHTML=items.map(formatter).join(''); }
-    function itemCard(item){ return `<div class="item"><div class="item-title">${item.title||'Untitled'}</div><div class="item-meta">${item.kind?'Type: '+item.kind+'<br>':''}${item.course_name?'Course: '+item.course_name+'<br>':''}${item.starts_at?'Starts: '+formatDateTime(item.starts_at)+'<br>':''}${item.due_at?'Due/Ends: '+formatDateTime(item.due_at)+'<br>':''}${item.source?'Source: '+item.source:''}</div></div>`; }
-    function blockCard(block){ return `<div class="item"><div class="item-title">${block.title||'Study Block'}</div><div class="item-meta">${formatDateTime(block.starts_at)} - ${formatDateTime(block.ends_at)}<br>${block.reason||''}${block.source_item_title?'<br>From: '+block.source_item_title:''}</div></div>`; }
-    function buildSitrepText(data){ const today=(data.today||[]).length, must=(data.must_do_today||[]).length, open=(data.still_open||[]).length, blocks=(data.suggested_blocks||[]).length; const firstMust=must?data.must_do_today[0].title:'No urgent must-do item right now.'; const firstBlock=blocks?data.suggested_blocks[0].title:'No suggested study block yet.'; return ['Morning Sitrep','',`Today has ${today} scheduled item${today===1?'':'s'}.`,`You have ${must} item${must===1?'':'s'} that need attention today.`,`There are ${open} still-open school task${open===1?'':'s'}.`,`Top must-do: ${firstMust}`,`Suggested next block: ${firstBlock}`].join('\n'); }
-    function renderWarnings(warnings){ const target=document.getElementById('warnings'); target.innerHTML=(!warnings||warnings.length===0)?'':warnings.map(w=>`<div class="warning">${w}</div>`).join(''); }
-    async function loadSitrep(){ try{ const response=await fetch('/api/sitrep'); if(!response.ok){ document.getElementById('sitrepText').textContent='Failed to load sitrep.'; return; } const data=await response.json(); latestSitrepPayload=data; document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleString(); document.getElementById('sitrepText').textContent=buildSitrepText(data); document.getElementById('weatherLine').textContent=data.weather_summary?('Weather: '+data.weather_summary):'Weather: unavailable'; renderWarnings(data.warnings||[]); renderList('todayList',data.today||[],itemCard); renderList('mustDoList',data.must_do_today||[],itemCard); renderList('stillOpenList',data.still_open||[],itemCard); renderList('suggestedBlocksList',data.suggested_blocks||[],blockCard); }catch(error){ console.error(error); document.getElementById('sitrepText').textContent='Error contacting sitrep backend.'; } }
-    function speakSitrep(){ if(!('speechSynthesis' in window)){ alert('Speech synthesis is not supported in this browser.'); return; } const text=(latestSitrepPayload&&latestSitrepPayload.spoken_text)||document.getElementById('sitrepText').textContent; if(!text) return; window.speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=1.0; u.pitch=1.0; window.speechSynthesis.speak(u); }
-    function stopVoice(){ if('speechSynthesis' in window){ window.speechSynthesis.cancel(); } if(recognition){ recognition.stop(); } }
-    function startVoiceInput(){ const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR){ alert('Voice input is not supported in this browser.'); return; } recognition=new SR(); recognition.lang='en-US'; recognition.interimResults=false; recognition.maxAlternatives=1; recognition.onresult=function(event){ const transcript=event.results[0][0].transcript; document.getElementById('msg').value=transcript; }; recognition.onerror=function(event){ console.error(event); }; recognition.start(); }
-    async function maybeAutoMorningSitrep(){ const now=new Date(); const key='titan_auto_sitrep_date'; const todayKey=now.toISOString().slice(0,10); if(now.getHours()===8 && now.getMinutes()===0 && localStorage.getItem(key)!==todayKey){ await loadSitrep(); if('Notification' in window && Notification.permission==='granted'){ new Notification('Titan Morning Sitrep',{ body:(latestSitrepPayload&&latestSitrepPayload.spoken_text)||'Your morning sitrep is ready.' }); } speakSitrep(); localStorage.setItem(key,todayKey); } }
-    function renderActions(actions){ const el=document.getElementById('actions'); if(!actions||actions.length===0){ el.textContent='(none)'; return; } el.innerHTML=''; actions.forEach((action,index)=>{ const line=document.createElement('div'); line.className='action-line'; const text=document.createElement('div'); text.className='action-text'; text.textContent=`${index+1}. ${action.type||'unknown'}${action.app?' | app: '+action.app:''}${action.info?' | info: '+action.info:''}${action.value?' | value: '+action.value:''}${action.reason?' | reason: '+action.reason:''}`; line.appendChild(text); const isExecutable=action.type==='open_app'||action.type==='open_url'; if(isExecutable){ const btn=document.createElement('button'); btn.type='button'; btn.textContent='Execute'; btn.onclick=()=>executeAction(action); line.appendChild(btn); } el.appendChild(line); }); }
-    async function sendMsg(){ const input=document.getElementById('msg'); const text=input.value.trim(); if(!text) return; ensureChat(); appendChatLine('YOU: '+text); input.value=''; try{ const response=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,mode:'personal_general'})}); if(!response.ok){ appendChatLine('TITAN: Backend error: '+response.status); renderActions([]); return; } const data=await response.json(); appendChatLine('TITAN: '+(data.reply||'No reply returned.')); renderActions(data.proposed_actions||[]); }catch(error){ console.error(error); appendChatLine('TITAN: Error contacting backend.'); renderActions([]); } }
-    async function executeAction(action){ try{ const response=await fetch('/api/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(action)}); if(!response.ok){ appendChatLine('TITAN: Execute failed: '+response.status); return; } const result=await response.json(); appendChatLine('TITAN: '+(result.message||'Action finished.')); }catch(error){ console.error(error); appendChatLine('TITAN: Failed to execute action.'); } }
-    document.getElementById('sendBtn').addEventListener('click',sendMsg); document.getElementById('newChatBtn').addEventListener('click',createChat); document.getElementById('refreshSitrepBtn').addEventListener('click',loadSitrep); document.getElementById('speakSitrepBtn').addEventListener('click',speakSitrep); document.getElementById('stopVoiceBtn').addEventListener('click',stopVoice); document.getElementById('voiceInputBtn').addEventListener('click',startVoiceInput);
-    document.getElementById('msg').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMsg(); } });
-    window.addEventListener('load', async function(){ ensureChat(); await loadSitrep(); if('Notification' in window && Notification.permission==='default'){ Notification.requestPermission(); } maybeAutoMorningSitrep(); setInterval(maybeAutoMorningSitrep,60000); });
+    let currentChatId = null;
+    let latestSitrepPayload = null;
+    let recognition = null;
+
+    function ensureChat() {
+      if (!currentChatId) {
+        currentChatId = 'chat_' + Date.now();
+      }
+      return currentChatId;
+    }
+
+    function createChat() {
+      currentChatId = 'chat_' + Date.now();
+      document.getElementById('chat').textContent = 'TITAN: Online. How can I help?';
+      document.getElementById('actions').textContent = '(none)';
+      document.getElementById('msg').value = '';
+    }
+
+    function appendChatLine(text) {
+      const chat = document.getElementById('chat');
+      chat.textContent += '\n' + text;
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function formatDateTime(value) {
+      if (!value) return 'No time listed';
+      try {
+        return new Date(value).toLocaleString();
+      } catch {
+        return value;
+      }
+    }
+
+    function renderList(id, items, formatter) {
+      const el = document.getElementById(id);
+
+      if (!items || items.length === 0) {
+        el.innerHTML = '<div class="empty">Nothing to show right now.</div>';
+        return;
+      }
+
+      el.innerHTML = items.map(formatter).join('');
+    }
+
+    function itemCard(item) {
+      return `<div class="item"><div class="item-title">${item.title || 'Untitled'}</div><div class="item-meta">${item.kind ? 'Type: ' + item.kind + '<br>' : ''}${item.course_name ? 'Course: ' + item.course_name + '<br>' : ''}${item.starts_at ? 'Starts: ' + formatDateTime(item.starts_at) + '<br>' : ''}${item.due_at ? 'Due/Ends: ' + formatDateTime(item.due_at) + '<br>' : ''}${item.source ? 'Source: ' + item.source : ''}</div></div>`;
+    }
+
+    function blockCard(block) {
+      return `<div class="item"><div class="item-title">${block.title || 'Study Block'}</div><div class="item-meta">${formatDateTime(block.starts_at)} - ${formatDateTime(block.ends_at)}<br>${block.reason || ''}${block.source_item_title ? '<br>From: ' + block.source_item_title : ''}</div></div>`;
+    }
+
+    function buildSitrepText(data) {
+      const today = (data.today || []).length;
+      const must = (data.must_do_today || []).length;
+      const open = (data.still_open || []).length;
+      const blocks = (data.suggested_blocks || []).length;
+      const firstMust = must ? data.must_do_today[0].title : 'No urgent must-do item right now.';
+      const firstBlock = blocks ? data.suggested_blocks[0].title : 'No suggested study block yet.';
+
+      return [
+        'Morning Sitrep',
+        '',
+        `Today has ${today} scheduled item${today === 1 ? '' : 's'}.`,
+        `You have ${must} item${must === 1 ? '' : 's'} that need attention today.`,
+        `There are ${open} still-open school task${open === 1 ? '' : 's'}.`,
+        `Top must-do: ${firstMust}`,
+        `Suggested next block: ${firstBlock}`
+      ].join('\n');
+    }
+
+    function renderWarnings(warnings) {
+      const target = document.getElementById('warnings');
+      target.innerHTML = (!warnings || warnings.length === 0)
+        ? ''
+        : warnings.map(w => `<div class="warning">${w}</div>`).join('');
+    }
+
+    async function loadSitrep() {
+      try {
+        const response = await fetch('/api/sitrep');
+
+        if (!response.ok) {
+          document.getElementById('sitrepText').textContent = 'Failed to load sitrep.';
+          return;
+        }
+
+        const data = await response.json();
+        latestSitrepPayload = data;
+
+        document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleString();
+        document.getElementById('sitrepText').textContent = buildSitrepText(data);
+        document.getElementById('weatherLine').textContent = data.weather_summary
+          ? ('Weather: ' + data.weather_summary)
+          : 'Weather: unavailable';
+
+        renderWarnings(data.warnings || []);
+        renderList('todayList', data.today || [], itemCard);
+        renderList('mustDoList', data.must_do_today || [], itemCard);
+        renderList('stillOpenList', data.still_open || [], itemCard);
+        renderList('suggestedBlocksList', data.suggested_blocks || [], blockCard);
+      } catch (error) {
+        console.error(error);
+        document.getElementById('sitrepText').textContent = 'Error contacting sitrep backend.';
+      }
+    }
+
+    function speakSitrep() {
+      if (!('speechSynthesis' in window)) {
+        alert('Speech synthesis is not supported in this browser.');
+        return;
+      }
+
+      const text = (latestSitrepPayload && latestSitrepPayload.spoken_text)
+        || document.getElementById('sitrepText').textContent;
+
+      if (!text) return;
+
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1.0;
+      u.pitch = 1.0;
+      window.speechSynthesis.speak(u);
+    }
+
+    function stopVoice() {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognition) {
+        recognition.stop();
+      }
+    }
+
+    function startVoiceInput() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (!SR) {
+        alert('Voice input is not supported in this browser.');
+        return;
+      }
+
+      recognition = new SR();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('msg').value = transcript;
+      };
+
+      recognition.onerror = function(event) {
+        console.error(event);
+      };
+
+      recognition.start();
+    }
+
+    async function maybeAutoMorningSitrep() {
+      const now = new Date();
+      const key = 'titan_auto_sitrep_date';
+      const todayKey = now.toISOString().slice(0, 10);
+
+      if (now.getHours() === 8 && now.getMinutes() === 0 && localStorage.getItem(key) !== todayKey) {
+        await loadSitrep();
+
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Titan Morning Sitrep', {
+            body: (latestSitrepPayload && latestSitrepPayload.spoken_text) || 'Your morning sitrep is ready.'
+          });
+        }
+
+        speakSitrep();
+        localStorage.setItem(key, todayKey);
+      }
+    }
+
+    function renderActions(actions) {
+      const el = document.getElementById('actions');
+
+      if (!actions || actions.length === 0) {
+        el.textContent = '(none)';
+        return;
+      }
+
+      el.innerHTML = '';
+
+      actions.forEach((action, index) => {
+        const line = document.createElement('div');
+        line.className = 'action-line';
+
+        const text = document.createElement('div');
+        text.className = 'action-text';
+        text.textContent =
+          `${index + 1}. ${action.type || 'unknown'}`
+          + `${action.app ? ' | app: ' + action.app : ''}`
+          + `${action.info ? ' | info: ' + action.info : ''}`
+          + `${action.value ? ' | value: ' + action.value : ''}`
+          + `${action.reason ? ' | reason: ' + action.reason : ''}`;
+
+        line.appendChild(text);
+
+        const isExecutable = action.type === 'open_app' || action.type === 'open_url';
+        if (isExecutable) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = 'Execute';
+          btn.onclick = () => executeAction(action);
+          line.appendChild(btn);
+        }
+
+        el.appendChild(line);
+      });
+    }
+
+    async function sendMsg() {
+      const input = document.getElementById('msg');
+      const text = input.value.trim();
+
+      if (!text) return;
+
+      ensureChat();
+      appendChatLine('YOU: ' + text);
+      input.value = '';
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, mode: 'personal_general' })
+        });
+
+        if (!response.ok) {
+          appendChatLine('TITAN: Backend error: ' + response.status);
+          renderActions([]);
+          return;
+        }
+
+        const data = await response.json();
+        appendChatLine('TITAN: ' + (data.reply || 'No reply returned.'));
+        renderActions(data.proposed_actions || []);
+      } catch (error) {
+        console.error(error);
+        appendChatLine('TITAN: Error contacting backend.');
+        renderActions([]);
+      }
+    }
+
+    async function executeAction(action) {
+      try {
+        const response = await fetch('/api/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(action)
+        });
+
+        if (!response.ok) {
+          appendChatLine('TITAN: Execute failed: ' + response.status);
+          return;
+        }
+
+        const result = await response.json();
+        appendChatLine('TITAN: ' + (result.message || 'Action finished.'));
+      } catch (error) {
+        console.error(error);
+        appendChatLine('TITAN: Failed to execute action.');
+      }
+    }
+
+    document.getElementById('sendBtn').addEventListener('click', sendMsg);
+    document.getElementById('newChatBtn').addEventListener('click', createChat);
+    document.getElementById('refreshSitrepBtn').addEventListener('click', loadSitrep);
+    document.getElementById('speakSitrepBtn').addEventListener('click', speakSitrep);
+    document.getElementById('stopVoiceBtn').addEventListener('click', stopVoice);
+    document.getElementById('voiceInputBtn').addEventListener('click', startVoiceInput);
+
+    document.getElementById('msg').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMsg();
+      }
+    });
+
+    window.addEventListener('load', async function() {
+      ensureChat();
+      await loadSitrep();
+
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+
+      maybeAutoMorningSitrep();
+      setInterval(maybeAutoMorningSitrep, 60000);
+    });
   </script>
 </body>
 </html>

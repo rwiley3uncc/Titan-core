@@ -1,23 +1,26 @@
 # Titan launcher
-# Starts Titan backend, waits a few seconds, then opens the live UI
+# Starts Titan backend in a visible PowerShell process, waits a few seconds, then opens the live UI.
 
-Set-Location "C:\Users\mouse\dev\titancore"
-
-# Activate virtual environment if it exists
-if (Test-Path ".\.venv\Scripts\Activate.ps1") {
-    . .\.venv\Scripts\Activate.ps1
-} else {
-    Write-Host "Titan virtual environment not found." -ForegroundColor Red
-    Read-Host "Press Enter to close"
-    exit
+$repoRoot = $PSScriptRoot
+if (-not $repoRoot) {
+    $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
-# Start backend in a new PowerShell window
+Set-Location $repoRoot
+
+# Activate virtual environment if it exists
+if (-not (Test-Path ".\.venv\Scripts\Activate.ps1")) {
+    Write-Host "Titan virtual environment not found at $repoRoot\.venv\Scripts\Activate.ps1" -ForegroundColor Red
+    Read-Host "Press Enter to close"
+    exit 1
+}
+
+# Start backend in a visible PowerShell window
+$backendCommand = "Set-Location '$repoRoot'; . .\.venv\Scripts\Activate.ps1; python -m uvicorn titan_core.main:app --reload"
 Start-Process powershell -ArgumentList @(
-    "-NoExit",
+    "-NoProfile",
     "-ExecutionPolicy", "Bypass",
-    "-Command",
-    "Set-Location 'C:\Users\mouse\dev\titancore'; .\.venv\Scripts\Activate.ps1; python -m uvicorn titan_core.main:app --reload"
+    "-Command", $backendCommand
 )
 
 # Give backend time to start

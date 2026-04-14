@@ -1,5 +1,6 @@
 # Titan launcher
-# Starts Titan backend in a visible PowerShell process, waits a few seconds, then opens the live UI.
+# Starts Titan backend in a visible PowerShell process, waits a few seconds,
+# then opens the current live UI in Microsoft Edge.
 
 $repoRoot = $PSScriptRoot
 if (-not $repoRoot) {
@@ -26,5 +27,6 @@ Start-Process powershell -ArgumentList @(
 # Give backend time to start
 Start-Sleep -Seconds 3
 
-# Open the live Titan UI
-Start-Process "http://127.0.0.1:8000/ui/index.html?fresh=2"
+# Open the live Titan UI in Edge with a fresh cache-busting value
+$uiUrl = "http://127.0.0.1:8000/ui/index.html?fresh=10"
+Start-Process "msedge.exe" $uiUrl

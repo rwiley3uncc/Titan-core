@@ -23,13 +23,11 @@ from .rules import propose_from_text
 from .policy import apply_policy
 from .validator import validate_output
 from .memory import get_recent_memories
-
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
+from titan_brain.local_llm import generate_local_reply
 
 
+# Kept for backward compatibility with existing configuration, but Titan's
+# normal local reply path now uses Ollama instead of OpenAI.
 DEFAULT_MODEL = os.getenv("TITAN_OPENAI_MODEL", "gpt-4.1-mini")
 MAX_HISTORY_MESSAGES = 10
 MAX_MEMORY_ITEMS = 10
@@ -114,12 +112,6 @@ def _generate_llm_reply(
     user_text: str,
     memories: list[Any]
 ) -> Optional[str]:
-
-    api_key = os.getenv("OPENAI_API_KEY")
-
-    if not api_key or OpenAI is None:
-        return None
-
     transcript = _conversation_window(inp)
     memory_block = _memory_context(memories)
 
@@ -137,20 +129,18 @@ Write Titan's reply.
 """
 
     try:
-        client = OpenAI(api_key=api_key)
-
-        response = client.responses.create(
-            model=DEFAULT_MODEL,
-            instructions=_system_prompt(inp),
-            input=prompt,
+        # Titan now uses a local Ollama backend for reply generation, while
+        # memory retrieval, policy enforcement, validation, and action
+        # proposal continue through the existing architecture.
+        text = generate_local_reply(
+            prompt=prompt,
+            system_prompt=_system_prompt(inp)
         )
-
-        text = getattr(response, "output_text", None)
 
         if not text:
             return None
 
-        return str(text).strip()
+        return text.strip()
 
     except Exception:
         return None
@@ -162,12 +152,16 @@ def _convert_actions(actions: list[dict]) -> list[ProposedAction]:
 
     for action in actions:
         a_type = action.get("type")
+        a_app = action.get("app")
+        a_label = action.get("label")
         a_args = action.get("args", {})
 
         if isinstance(a_type, str):
             out.append(
                 ProposedAction(
                     type=a_type.strip(),
+                    app=a_app.strip() if isinstance(a_app, str) else None,
+                    label=a_label.strip() if isinstance(a_label, str) else None,
                     args=a_args if isinstance(a_args, dict) else {}
                 )
             )

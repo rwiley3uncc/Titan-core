@@ -13,7 +13,7 @@ class ProposedAction(BaseModel):
     type: str
     app: Optional[str] = None
     label: Optional[str] = None
-    payload: Dict[str, Any] = Field(default_factory=dict)
+    args: Dict[str, Any] = Field(default_factory=dict)
 
 
 class BrainInput(BaseModel):
@@ -26,7 +26,7 @@ class BrainInput(BaseModel):
 
 class BrainOutput(BaseModel):
     reply: str
-    proposed_actions: List[Dict[str, Any]] = Field(default_factory=list)
+    proposed_actions: List[ProposedAction] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):
@@ -36,4 +36,4 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
-    proposed_actions: List[Dict[str, Any]] = Field(default_factory=list)
+    proposed_actions: List[ProposedAction] = Field(default_factory=list)

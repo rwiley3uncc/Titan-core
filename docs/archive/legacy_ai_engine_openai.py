@@ -1,5 +1,14 @@
+"""Archived legacy OpenAI engine.
+
+This was the old unused OpenAI engine.
+The active Titan brain now uses titan_core/brain.py with
+titan_brain/local_llm.py and Ollama.
+This file is archived for reference only.
+"""
+
 import os
 from openai import OpenAI
+
 
 class AIEngine:
     """

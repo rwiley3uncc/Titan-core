@@ -142,7 +142,7 @@ def recent_memory_context(db: Session, user_id: int, limit: int = 8) -> str:
     return "No known user facts yet." if not rows else "\n".join(["Known facts about the user:"] + [f"- {row.content}" for row in rows])
 
 def build_brain_input(db: Session, user: User, req: ChatRequest, clean_text: str) -> BrainInput:
-    safe_mode = req.mode if req.mode in {"personal_general", "personal_productivity", "personal_builder", "personal_family"} else "personal_general"
+    safe_mode = req.mode if req.mode in {"personal_general", "personal_productivity", "personal_builder", "personal_family", "development_assistant"} else "personal_general"
     return BrainInput(user_id=user.id, role=user.role, mode=safe_mode, tools=[], messages=[ChatMessage(role="system", content=recent_memory_context(db, user.id)), ChatMessage(role="user", content=clean_text)])
 
 @router.post("/chat", response_model=ChatResponse)

@@ -75,6 +75,33 @@ body {
   gap: 10px;
 }
 
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.mode-row label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mode-row select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+}
+
+.mode-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 button {
   padding: 10px 14px;
   background: var(--accent);
@@ -290,6 +317,14 @@ textarea {
         <div class="panel">
           <h3>Conversation</h3>
           <div id="chat">TITAN: Online. How can I help?</div>
+          <div class="mode-row">
+            <label for="assistantMode"><strong>Assistant Mode</strong></label>
+            <select id="assistantMode">
+              <option value="personal_general">Personal Assistant</option>
+              <option value="development_assistant">Development Assistant</option>
+            </select>
+            <div id="modeHint" class="mode-hint">Planning, reminders, drafting, and personal organization.</div>
+          </div>
           <textarea id="msg" rows="3" placeholder="Type a message or use Voice Input..."></textarea>
           <div class="button-row" style="margin-top:10px;">
             <button id="sendBtn" type="button">Send</button>
@@ -330,6 +365,19 @@ textarea {
       const chat = document.getElementById('chat');
       chat.textContent += '\n' + text;
       chat.scrollTop = chat.scrollHeight;
+    }
+
+    function currentMode() {
+      return document.getElementById('assistantMode').value || 'personal_general';
+    }
+
+    function updateModeHint() {
+      const hint = document.getElementById('modeHint');
+      if (!hint) return;
+
+      hint.textContent = currentMode() === 'development_assistant'
+        ? 'Code explanation, debugging help, architecture advice, and safe project guidance.'
+        : 'Planning, reminders, drafting, and personal organization.';
     }
 
     function formatDateTime(value) {
@@ -535,10 +583,11 @@ textarea {
       input.value = '';
 
       try {
+        const mode = currentMode();
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, mode: 'personal_general' })
+          body: JSON.stringify({ message: text, mode })
         });
 
         if (!response.ok) {
@@ -580,6 +629,7 @@ textarea {
 
     document.getElementById('sendBtn').addEventListener('click', sendMsg);
     document.getElementById('newChatBtn').addEventListener('click', createChat);
+    document.getElementById('assistantMode').addEventListener('change', updateModeHint);
     document.getElementById('refreshSitrepBtn').addEventListener('click', loadSitrep);
     document.getElementById('speakSitrepBtn').addEventListener('click', speakSitrep);
     document.getElementById('stopVoiceBtn').addEventListener('click', stopVoice);
@@ -594,6 +644,7 @@ textarea {
 
     window.addEventListener('load', async function() {
       ensureChat();
+      updateModeHint();
       await loadSitrep();
 
       if ('Notification' in window && Notification.permission === 'default') {

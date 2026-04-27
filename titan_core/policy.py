@@ -41,6 +41,11 @@ from .schemas import BrainInput, BrainOutput
 # ---------------------------------------------------------------------
 
 _ALLOWED_TOOLS_BY_MODE = {
+    "personal_general": {"create_task", "save_memory", "draft_email"},
+    "personal_productivity": {"create_task", "save_memory", "draft_email"},
+    "personal_builder": {"create_task", "save_memory", "draft_email"},
+    "personal_family": {"create_task", "save_memory", "draft_email"},
+    "development_assistant": {"create_task", "save_memory", "draft_email"},
     "student_coach": {"create_task", "save_memory", "draft_email"},
     "student_general": {"create_task", "save_memory", "draft_email"},
     "teacher_ta": {"create_task", "save_memory", "draft_email"},

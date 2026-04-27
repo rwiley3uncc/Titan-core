@@ -84,6 +84,19 @@ body {
   flex-wrap: wrap;
 }
 
+.active-mode {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #e8eef5;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .mode-row label {
   font-size: 13px;
   color: var(--muted);
@@ -100,6 +113,8 @@ body {
 .mode-hint {
   font-size: 12px;
   color: var(--muted);
+  width: 100%;
+  line-height: 1.4;
 }
 
 button {
@@ -317,13 +332,14 @@ textarea {
         <div class="panel">
           <h3>Conversation</h3>
           <div id="chat">TITAN: Online. How can I help?</div>
+          <div id="activeModeLabel" class="active-mode">Active Mode: Personal Assistant</div>
           <div class="mode-row">
             <label for="assistantMode"><strong>Assistant Mode</strong></label>
             <select id="assistantMode">
               <option value="personal_general">Personal Assistant</option>
               <option value="development_assistant">Development Assistant</option>
             </select>
-            <div id="modeHint" class="mode-hint">Planning, reminders, drafting, and personal organization.</div>
+            <div id="modeHint" class="mode-hint">Personal Assistant: planning, reminders, drafting, sitreps.<br>Development Assistant: code help, debugging, file guidance, safe changes.</div>
           </div>
           <textarea id="msg" rows="3" placeholder="Type a message or use Voice Input..."></textarea>
           <div class="button-row" style="margin-top:10px;">
@@ -373,11 +389,18 @@ textarea {
 
     function updateModeHint() {
       const hint = document.getElementById('modeHint');
+      const label = document.getElementById('activeModeLabel');
       if (!hint) return;
 
-      hint.textContent = currentMode() === 'development_assistant'
-        ? 'Code explanation, debugging help, architecture advice, and safe project guidance.'
-        : 'Planning, reminders, drafting, and personal organization.';
+      const isDevMode = currentMode() === 'development_assistant';
+
+      if (label) {
+        label.textContent = isDevMode
+          ? 'Active Mode: Development Assistant'
+          : 'Active Mode: Personal Assistant';
+      }
+
+      hint.innerHTML = 'Personal Assistant: planning, reminders, drafting, sitreps.<br>Development Assistant: code help, debugging, file guidance, safe changes.';
     }
 
     function formatDateTime(value) {

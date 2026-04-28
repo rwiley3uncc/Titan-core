@@ -219,6 +219,17 @@ button {
   background: #fafafa;
 }
 
+.item-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.item-actions button {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .item-title {
   font-weight: bold;
   margin-bottom: 3px;
@@ -1324,6 +1335,15 @@ textarea {
       }
     }
 
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderList(id, items, formatter) {
       const el = document.getElementById(id);
 
@@ -1336,7 +1356,16 @@ textarea {
     }
 
     function itemCard(item) {
-      return `<div class="item"><div class="item-title">${item.title || 'Untitled'}</div><div class="item-meta">${item.kind ? 'Type: ' + item.kind + '<br>' : ''}${item.course_name ? 'Course: ' + item.course_name + '<br>' : ''}${item.starts_at ? 'Starts: ' + formatDateTime(item.starts_at) + '<br>' : ''}${item.due_at ? 'Due/Ends: ' + formatDateTime(item.due_at) + '<br>' : ''}${item.source ? 'Source: ' + item.source : ''}</div></div>`;
+      const title = escapeHtml(item.title || 'Untitled');
+      const kind = item.kind ? `Type: ${escapeHtml(item.kind)}<br>` : '';
+      const course = item.course_name ? `Course: ${escapeHtml(item.course_name)}<br>` : '';
+      const starts = item.starts_at ? `Starts: ${escapeHtml(formatDateTime(item.starts_at))}<br>` : '';
+      const due = item.due_at ? `Due/Ends: ${escapeHtml(formatDateTime(item.due_at))}<br>` : '';
+      const source = item.source ? `Source: ${escapeHtml(item.source)}` : '';
+      const dismissAction = item.is_overdue && item.item_id
+        ? `<div class="item-actions"><button type="button" class="dismiss-item-btn" data-item-id="${escapeHtml(item.item_id)}" data-title="${escapeHtml(item.title || 'Untitled')}" data-course="${escapeHtml(item.course_name || 'No data available.')}">Dismiss</button></div>`
+        : '';
+      return `<div class="item"><div class="item-title">${title}</div><div class="item-meta">${kind}${course}${starts}${due}${source}</div>${dismissAction}</div>`;
     }
 
     function blockCard(block) {
@@ -1394,7 +1423,12 @@ textarea {
       const must = (data.must_do_today || []).length;
       const open = (data.still_open || []).length;
       const nextClass = data.next_class || null;
-      const topPriority = (data.must_do_today || [])[0];
+      const topPriority = data.top_priority_item || (data.must_do_today || [])[0];
+      const upcomingAssignments = data.upcoming_assignments || [];
+      const dueThisWeekCount =
+        (data.due_today_assignments || []).length
+        + (data.due_tomorrow_assignments || []).length
+        + (data.due_this_week_assignments || []).length;
       const nextBlock = (data.suggested_blocks || [])[0];
       const weather = data.weather_summary || 'No data available.';
 
@@ -1410,6 +1444,13 @@ textarea {
       const nextClassTitle = nextClass && nextClass.title ? nextClass.title : 'No data available.';
       const nextClassTime = nextClass && nextClass.starts_at ? formatDateTime(nextClass.starts_at) : 'No data available.';
       const nextClassLocation = nextClass && nextClass.location ? nextClass.location : null;
+      const upcomingLines = upcomingAssignments.length
+        ? upcomingAssignments.map(item => {
+            const due = item.due_at ? formatDateTime(item.due_at) : (item.starts_at ? formatDateTime(item.starts_at) : 'No data available.');
+            const course = item.course_name ? ` (${item.course_name})` : '';
+            return `- ${item.title || 'Untitled item'}${course}\n  Due: ${due}`;
+          }).join('\n')
+        : 'No upcoming assignments.';
 
       return [
         "Good morning. Here's your briefing for today.",
@@ -1418,6 +1459,7 @@ textarea {
         `- ${today} scheduled item${today === 1 ? '' : 's'}`,
         `- ${must} task${must === 1 ? '' : 's'} needing attention`,
         `- ${open} still-open school task${open === 1 ? '' : 's'}`,
+        `- ${dueThisWeekCount} assignment${dueThisWeekCount === 1 ? '' : 's'} due this week`,
         '',
         'Next Class',
         nextClass
@@ -1428,6 +1470,9 @@ textarea {
         priorityTitle,
         priorityCourse !== 'No data available.' ? `(${priorityCourse})` : priorityCourse,
         `Due: ${priorityDue}`,
+        '',
+        'Upcoming Assignments',
+        upcomingLines,
         '',
         'Recommended Next Step',
         nextStepTitle,
@@ -1468,6 +1513,33 @@ textarea {
         document.getElementById('sitrepText').textContent = 'Error contacting sitrep backend.';
         updateHeaderStatus('error');
         return false;
+      }
+    }
+
+    async function dismissOverdueItem(itemId, title, course) {
+      try {
+        const response = await fetch('/api/dismissed-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            item_id: itemId,
+            title: title || 'Untitled',
+            course: course || 'No data available.',
+            reason: 'user dismissed',
+          }),
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          appendChatMessage('TITAN', detail || 'Failed to dismiss that overdue item.');
+          return;
+        }
+
+        appendChatMessage('TITAN', `Dismissed overdue item: ${title || 'Untitled'}.`);
+        await loadSitrep();
+      } catch (error) {
+        console.error(error);
+        appendChatMessage('TITAN', 'Failed to dismiss that overdue item.');
       }
     }
 
@@ -1774,6 +1846,16 @@ textarea {
         closeActionsModal();
         closeSettingsModal();
       }
+    });
+
+    document.addEventListener('click', e => {
+      const button = e.target.closest('.dismiss-item-btn');
+      if (!button) return;
+      dismissOverdueItem(
+        button.dataset.itemId || '',
+        button.dataset.title || 'Untitled',
+        button.dataset.course || 'No data available.'
+      );
     });
 
     window.addEventListener('load', async function() {

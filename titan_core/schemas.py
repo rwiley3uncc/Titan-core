@@ -73,3 +73,18 @@ class CalendarSourceUpdate(BaseModel):
     type: Optional[str] = None
     url: Optional[str] = None
     enabled: Optional[bool] = None
+
+
+class DismissedItemRecord(BaseModel):
+    item_id: str
+    title: str
+    course: str
+    dismissed_at: str
+    reason: str
+
+
+class DismissedItemCreate(BaseModel):
+    item_id: str
+    title: str
+    course: str
+    reason: str = "user dismissed"

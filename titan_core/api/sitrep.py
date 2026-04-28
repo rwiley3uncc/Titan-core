@@ -1,15 +1,22 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from titan_core.canvas_feed import import_canvas_ics_from_url
 from titan_core.calendar_store import list_calendar_sources
 from titan_core.config import settings
+from titan_core.dismissed_items_store import (
+    dismiss_item,
+    dismissed_item_ids,
+    list_dismissed_items,
+    stable_item_id_for_planner_item,
+)
 from titan_core.outlook_feed import import_outlook_ics_from_url
 from titan_core.planning import PlannerItem
+from titan_core.schemas import DismissedItemCreate, DismissedItemRecord
 from titan_core.sitrep import build_sitrep
 from titan_core.task_store import tasks_as_planner_items
 from titan_core.weather import fetch_weather_summary
@@ -18,7 +25,9 @@ router = APIRouter()
 
 
 def _serialize_item(item: PlannerItem) -> dict:
+    item_id = stable_item_id_for_planner_item(item)
     return {
+        "item_id": item_id,
         "title": item.title,
         "kind": item.kind,
         "starts_at": item.starts_at.isoformat() if item.starts_at else None,
@@ -217,13 +226,85 @@ def _count_phrase(count: int, singular: str, plural: str | None = None) -> str:
     return f"{count} {noun}"
 
 
+def _filter_dismissed_overdue(items: list[PlannerItem], now: datetime, dismissed_ids: set[str]) -> list[PlannerItem]:
+    filtered: list[PlannerItem] = []
+    for item in items:
+        due = _assignment_due_value(item)
+        if (
+            item.kind in {"assignment", "test", "reminder"}
+            and due is not None
+            and due < now
+            and stable_item_id_for_planner_item(item) in dismissed_ids
+        ):
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def _assignment_due_value(item: PlannerItem) -> datetime | None:
+    return item.due_at or item.starts_at
+
+
+def _classify_assignment_items(items: list[PlannerItem], now: datetime) -> dict[str, list[PlannerItem]]:
+    buckets: dict[str, list[PlannerItem]] = {
+        "overdue": [],
+        "due_today": [],
+        "due_tomorrow": [],
+        "due_this_week": [],
+        "future": [],
+    }
+
+    for item in items:
+        if item.is_complete:
+            continue
+        if item.kind not in {"assignment", "test", "reminder"}:
+            continue
+        due = _assignment_due_value(item)
+        if due is None:
+            continue
+
+        if due < now:
+            buckets["overdue"].append(item)
+        elif due.date() == now.date():
+            buckets["due_today"].append(item)
+        elif due.date() == (now + timedelta(days=1)).date():
+            buckets["due_tomorrow"].append(item)
+        elif due <= now + timedelta(days=7):
+            buckets["due_this_week"].append(item)
+        else:
+            buckets["future"].append(item)
+
+    for bucket_items in buckets.values():
+        bucket_items.sort(key=lambda item: _assignment_due_value(item) or datetime.max)
+
+    return buckets
+
+
+def _serialized_assignments(items: list[PlannerItem]) -> list[dict]:
+    return [_serialize_item(item) for item in items]
+
+
+def _with_overdue_flag(items: list[dict], overdue_ids: set[str]) -> list[dict]:
+    annotated: list[dict] = []
+    for item in items:
+        enriched = dict(item)
+        enriched["is_overdue"] = item.get("item_id") in overdue_ids
+        annotated.append(enriched)
+    return annotated
+
+
 def _spoken_text(data: dict) -> str:
     must_do = _dedupe_items(data.get("must_do_today", []))
     blocks = data.get("suggested_blocks", [])
     still_open = _dedupe_items(data.get("still_open", []))
     today = _dedupe_items(data.get("today", []))
     next_class = data.get("next_class")
+    due_today = data.get("due_today_assignments", [])
+    due_tomorrow = data.get("due_tomorrow_assignments", [])
+    due_this_week = data.get("due_this_week_assignments", [])
+    top_priority_item = data.get("top_priority_item") or (must_do[0] if must_do else None)
     weather = _spoken_weather(data.get("weather_summary"))
+    due_this_week_count = len(due_today) + len(due_tomorrow) + len(due_this_week)
     lines = [
         "Good morning.",
         "Here is your briefing.",
@@ -241,8 +322,10 @@ def _spoken_text(data: dict) -> str:
     else:
         lines.append("No upcoming classes today.")
 
-    if must_do:
-        top_item = must_do[0]
+    lines.append(f"You have {_count_phrase(due_this_week_count, 'assignment')} due this week.")
+
+    if top_priority_item:
+        top_item = top_priority_item
         title = _spoken_title(top_item)
         course = _spoken_course(top_item)
         due = _spoken_when(top_item.get("due_at") or top_item.get("starts_at"))
@@ -279,6 +362,7 @@ def build_sitrep_payload(
     warnings: list[str] = []
     all_items: list[PlannerItem] = []
     source_counts: dict[str, int] = {}
+    dismissed_ids = dismissed_item_ids()
 
     task_items = tasks_as_planner_items()
     all_items.extend(task_items)
@@ -332,8 +416,21 @@ def build_sitrep_payload(
             warnings.append(f"Weather fetch failed: {exc}")
             weather_summary = None
 
-    sitrep = build_sitrep(all_items, now=now, weather_summary=weather_summary, block_minutes=settings.study_block_minutes)
+    filtered_items = _filter_dismissed_overdue(all_items, now, dismissed_ids)
+    sitrep = build_sitrep(filtered_items, now=now, weather_summary=weather_summary, block_minutes=settings.study_block_minutes)
     next_class = _next_class_payload(_next_class_item(all_items, now))
+    assignment_buckets = _classify_assignment_items(filtered_items, now)
+    overdue_ids = {stable_item_id_for_planner_item(item) for item in assignment_buckets["overdue"]}
+    top_priority_source = (
+        assignment_buckets["due_today"]
+        or assignment_buckets["due_tomorrow"]
+        or assignment_buckets["due_this_week"]
+        or assignment_buckets["overdue"]
+    )
+    top_priority_item = _serialize_item(top_priority_source[0]) if top_priority_source else None
+    upcoming_assignments = _serialized_assignments(
+        (assignment_buckets["due_tomorrow"] + assignment_buckets["due_this_week"])[:3]
+    )
     payload = {
         "generated_at": sitrep.generated_at.isoformat(),
         "configuration": {
@@ -347,9 +444,16 @@ def build_sitrep_payload(
         },
         "warnings": warnings,
         "source_counts": source_counts,
-        "today": [_serialize_item(item) for item in sitrep.today_items],
-        "must_do_today": [_serialize_item(item) for item in sitrep.must_do_today],
-        "still_open": [_serialize_item(item) for item in sitrep.still_open[:15]],
+        "today": _with_overdue_flag([_serialize_item(item) for item in sitrep.today_items], overdue_ids),
+        "must_do_today": _with_overdue_flag([_serialize_item(item) for item in sitrep.must_do_today], overdue_ids),
+        "still_open": _with_overdue_flag([_serialize_item(item) for item in sitrep.still_open[:15]], overdue_ids),
+        "overdue_assignments": _serialized_assignments(assignment_buckets["overdue"]),
+        "due_today_assignments": _serialized_assignments(assignment_buckets["due_today"]),
+        "due_tomorrow_assignments": _serialized_assignments(assignment_buckets["due_tomorrow"]),
+        "due_this_week_assignments": _serialized_assignments(assignment_buckets["due_this_week"]),
+        "future_assignments": _serialized_assignments(assignment_buckets["future"]),
+        "top_priority_item": top_priority_item,
+        "upcoming_assignments": upcoming_assignments,
         "next_class": next_class,
         "suggested_blocks": [
             {
@@ -377,4 +481,29 @@ def get_sitrep(
         weather_summary=weather_summary,
         now_iso=now_iso,
         weather_location=weather_location,
+    )
+
+
+@router.get("/dismissed-items", response_model=list[DismissedItemRecord])
+def get_dismissed_items() -> list[DismissedItemRecord]:
+    return list_dismissed_items()
+
+
+@router.post("/dismissed-items", response_model=DismissedItemRecord)
+def post_dismissed_item(payload: DismissedItemCreate) -> DismissedItemRecord:
+    item_id = payload.item_id.strip()
+    title = payload.title.strip()
+    course = payload.course.strip()
+    if not item_id or not title:
+        raise HTTPException(status_code=400, detail="Dismissed item id and title are required.")
+    if len(item_id) < 8:
+        raise HTTPException(status_code=400, detail="Invalid dismissed item id.")
+
+    return dismiss_item(
+        DismissedItemCreate(
+            item_id=item_id,
+            title=title,
+            course=course or "No data available.",
+            reason=payload.reason or "user dismissed",
+        )
     )

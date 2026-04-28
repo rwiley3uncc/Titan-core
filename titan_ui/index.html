@@ -471,7 +471,7 @@ textarea {
 <body>
   <div class="header">
     <h1>Titan</h1>
-    <div class="sub">TEST 999</div>
+    <div id="headerStatus" class="sub">Personal Assistant | Online</div>
   </div>
 
   <div class="container">
@@ -595,6 +595,42 @@ textarea {
     const MAX_DEV_FILE_CHARS = 120000;
     const ALLOWED_DEV_FILE_EXTENSIONS = ['.py', '.js', '.ts', '.html', '.css', '.json', '.md', '.txt', '.gd', '.tscn', '.yml', '.yaml'];
 
+    function modeStatusPrefix() {
+      return currentMode() === 'development_assistant'
+        ? 'Development Assistant'
+        : 'Personal Assistant';
+    }
+
+    function defaultHeaderStatus() {
+      return currentMode() === 'development_assistant'
+        ? 'Development Assistant | Ready'
+        : 'Personal Assistant | Online';
+    }
+
+    function updateHeaderStatus(state = 'default') {
+      const target = document.getElementById('headerStatus');
+      if (!target) return;
+
+      let text = defaultHeaderStatus();
+      const prefix = modeStatusPrefix();
+
+      if (state === 'refreshing_sitrep') {
+        text = `${prefix} | Refreshing Sitrep...`;
+      } else if (state === 'reading_sitrep') {
+        text = `${prefix} | Reading Sitrep...`;
+      } else if (state === 'listening') {
+        text = `${prefix} | Listening...`;
+      } else if (state === 'thinking') {
+        text = `${prefix} | Thinking...`;
+      } else if (state === 'reviewing') {
+        text = `${prefix} | Reviewing...`;
+      } else if (state === 'error') {
+        text = `${prefix} | Error`;
+      }
+
+      target.textContent = text;
+    }
+
     function ensureChat() {
       if (!currentChatId) {
         currentChatId = 'chat_' + Date.now();
@@ -701,6 +737,8 @@ textarea {
       if (devUploadSection) {
         devUploadSection.classList.toggle('visible', isDevMode);
       }
+
+      updateHeaderStatus();
     }
 
     function updateDevFileName() {
@@ -836,11 +874,13 @@ textarea {
     }
 
     async function loadSitrep() {
+      updateHeaderStatus('refreshing_sitrep');
       try {
         const response = await fetch('/api/sitrep');
 
         if (!response.ok) {
           document.getElementById('sitrepText').textContent = 'Failed to load sitrep.';
+          updateHeaderStatus('error');
           return false;
         }
 
@@ -856,29 +896,38 @@ textarea {
         renderList('mustDoList', data.must_do_today || [], itemCard);
         renderList('stillOpenList', data.still_open || [], itemCard);
         renderList('suggestedBlocksList', data.suggested_blocks || [], blockCard);
+        updateHeaderStatus();
         return true;
       } catch (error) {
         console.error(error);
         document.getElementById('sitrepText').textContent = 'Error contacting sitrep backend.';
+        updateHeaderStatus('error');
         return false;
       }
     }
 
     function speakSitrep() {
+      updateHeaderStatus('reading_sitrep');
       if (!('speechSynthesis' in window)) {
         alert('Speech synthesis is not supported in this browser.');
+        updateHeaderStatus('error');
         return false;
       }
 
       const text = (latestSitrepPayload && latestSitrepPayload.spoken_text)
         || document.getElementById('sitrepText').textContent;
 
-      if (!text) return false;
+      if (!text) {
+        updateHeaderStatus('error');
+        return false;
+      }
 
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.rate = 1.0;
       u.pitch = 1.0;
+      u.onend = () => updateHeaderStatus();
+      u.onerror = () => updateHeaderStatus('error');
       window.speechSynthesis.speak(u);
       return true;
     }
@@ -890,6 +939,7 @@ textarea {
       if (recognition) {
         recognition.stop();
       }
+      updateHeaderStatus();
     }
 
     function startVoiceInput() {
@@ -904,6 +954,7 @@ textarea {
       recognition.lang = 'en-US';
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
+      updateHeaderStatus('listening');
 
       recognition.onresult = function(event) {
         const transcript = event.results[0][0].transcript;
@@ -912,6 +963,11 @@ textarea {
 
       recognition.onerror = function(event) {
         console.error(event);
+        updateHeaderStatus('error');
+      };
+
+      recognition.onend = function() {
+        updateHeaderStatus();
       };
 
       recognition.start();
@@ -1003,6 +1059,7 @@ textarea {
 
       try {
         const mode = currentMode();
+        updateHeaderStatus(mode === 'development_assistant' ? 'reviewing' : 'thinking');
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1017,16 +1074,19 @@ textarea {
         if (!response.ok) {
           appendChatMessage('TITAN', 'Backend error: ' + response.status);
           renderActions([]);
+          updateHeaderStatus('error');
           return;
         }
 
         const data = await response.json();
         appendConversationText('TITAN', data.reply || 'No reply returned.');
         renderActions(data.proposed_actions || []);
+        updateHeaderStatus();
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Error contacting backend.');
         renderActions([]);
+        updateHeaderStatus('error');
       }
     }
 
@@ -1062,14 +1122,17 @@ textarea {
 
         if (!response.ok) {
           appendChatMessage('TITAN', 'Execute failed: ' + response.status);
+          updateHeaderStatus('error');
           return;
         }
 
         const result = await response.json();
         appendChatMessage('TITAN', result.message || 'Action finished.');
+        updateHeaderStatus();
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Failed to execute action.');
+        updateHeaderStatus('error');
       }
     }
 

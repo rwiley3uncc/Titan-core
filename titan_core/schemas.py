@@ -39,3 +39,13 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     proposed_actions: List[ProposedAction] = Field(default_factory=list)
+
+
+class TaskRecord(BaseModel):
+    task_id: str
+    title: str
+    due_date: Optional[str] = None
+    status: str
+    priority: int = 0
+    created_at: str
+    updated_at: str

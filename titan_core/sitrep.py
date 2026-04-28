@@ -30,7 +30,9 @@ def open_items(items: list[PlannerItem], now: datetime) -> list[PlannerItem]:
         if item.is_complete:
             continue
         due = _norm(item.due_at) or _norm(item.starts_at)
-        if item.kind in {"assignment", "test", "reminder"} and (due is None or due >= now - timedelta(days=1)):
+        if item.kind in {"assignment", "test"} and (due is None or due >= now - timedelta(days=1)):
+            results.append(item)
+        if item.kind == "reminder":
             results.append(item)
     return sorted(results, key=lambda x: _norm(x.due_at) or _norm(x.starts_at) or datetime.max)
 

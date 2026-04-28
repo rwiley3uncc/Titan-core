@@ -323,6 +323,46 @@ textarea {
   line-height: 1.4;
 }
 
+.voice-settings {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.voice-settings-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.voice-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.voice-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voice-control label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.voice-control select,
+.voice-control input {
+  width: 100%;
+}
+
+.voice-control-value {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* ACTIONS */
 
 #actions {
@@ -558,6 +598,30 @@ textarea {
             </div>
             <div id="devFileName" class="dev-upload-meta">No file selected.</div>
           </div>
+          <div class="voice-settings">
+            <div class="voice-settings-title">Read-Aloud Voice</div>
+            <div class="voice-settings-grid">
+              <div class="voice-control">
+                <label for="voiceSelect">Voice</label>
+                <select id="voiceSelect"></select>
+              </div>
+              <div class="voice-control">
+                <label for="voiceRate">Rate</label>
+                <input id="voiceRate" type="range" min="0.7" max="1.2" step="0.05" value="0.95" />
+                <div id="voiceRateValue" class="voice-control-value">0.95</div>
+              </div>
+              <div class="voice-control">
+                <label for="voicePitch">Pitch</label>
+                <input id="voicePitch" type="range" min="0.8" max="1.2" step="0.05" value="1.0" />
+                <div id="voicePitchValue" class="voice-control-value">1.00</div>
+              </div>
+              <div class="voice-control">
+                <label for="voiceVolume">Volume</label>
+                <input id="voiceVolume" type="range" min="0.2" max="1.0" step="0.05" value="1.0" />
+                <div id="voiceVolumeValue" class="voice-control-value">1.00</div>
+              </div>
+            </div>
+          </div>
           <div class="button-row" style="margin-top:10px;">
             <button id="sendBtn" type="button">Send</button>
             <button id="newChatBtn" type="button">New Chat</button>
@@ -591,9 +655,17 @@ textarea {
     let currentProposedActions = [];
     let selectedDevFile = null;
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
+    const VOICE_NAME_STORAGE_KEY = 'titan_voice_name';
+    const VOICE_RATE_STORAGE_KEY = 'titan_voice_rate';
+    const VOICE_PITCH_STORAGE_KEY = 'titan_voice_pitch';
+    const VOICE_VOLUME_STORAGE_KEY = 'titan_voice_volume';
     const INITIAL_TITAN_GREETING = 'Online. How can I help?';
     const MAX_DEV_FILE_CHARS = 120000;
     const ALLOWED_DEV_FILE_EXTENSIONS = ['.py', '.js', '.ts', '.html', '.css', '.json', '.md', '.txt', '.gd', '.tscn', '.yml', '.yaml'];
+    const DEFAULT_VOICE_RATE = 0.95;
+    const DEFAULT_VOICE_PITCH = 1.0;
+    const DEFAULT_VOICE_VOLUME = 1.0;
+    let availableVoices = [];
 
     function modeStatusPrefix() {
       return currentMode() === 'development_assistant'
@@ -763,6 +835,103 @@ textarea {
       updateDevFileName();
     }
 
+    function parseStoredNumber(key, fallback, min, max) {
+      const raw = Number(localStorage.getItem(key));
+      if (!Number.isFinite(raw)) return fallback;
+      return Math.min(max, Math.max(min, raw));
+    }
+
+    function currentVoiceSettings() {
+      return {
+        voiceName: localStorage.getItem(VOICE_NAME_STORAGE_KEY) || '',
+        rate: parseStoredNumber(VOICE_RATE_STORAGE_KEY, DEFAULT_VOICE_RATE, 0.7, 1.2),
+        pitch: parseStoredNumber(VOICE_PITCH_STORAGE_KEY, DEFAULT_VOICE_PITCH, 0.8, 1.2),
+        volume: parseStoredNumber(VOICE_VOLUME_STORAGE_KEY, DEFAULT_VOICE_VOLUME, 0.2, 1.0),
+      };
+    }
+
+    function updateVoiceValueDisplays() {
+      const rateInput = document.getElementById('voiceRate');
+      const pitchInput = document.getElementById('voicePitch');
+      const volumeInput = document.getElementById('voiceVolume');
+      document.getElementById('voiceRateValue').textContent = Number(rateInput.value).toFixed(2);
+      document.getElementById('voicePitchValue').textContent = Number(pitchInput.value).toFixed(2);
+      document.getElementById('voiceVolumeValue').textContent = Number(volumeInput.value).toFixed(2);
+    }
+
+    function preferredVoice(voices) {
+      if (!voices || !voices.length) return null;
+
+      const englishVoices = voices.filter(voice => String(voice.lang || '').toLowerCase().startsWith('en'));
+      const pool = englishVoices.length ? englishVoices : voices;
+      const rankedTerms = ['natural', 'premium', 'enhanced', 'samantha', 'zira', 'aria', 'jenny', 'guy', 'davis', 'google us english', 'microsoft'];
+
+      for (const term of rankedTerms) {
+        const match = pool.find(voice => String(voice.name || '').toLowerCase().includes(term));
+        if (match) return match;
+      }
+
+      return pool.find(voice => voice.default) || pool[0] || null;
+    }
+
+    function selectedVoice() {
+      const settings = currentVoiceSettings();
+      const byName = availableVoices.find(voice => voice.name === settings.voiceName);
+      return byName || preferredVoice(availableVoices);
+    }
+
+    function populateVoiceSelect() {
+      const select = document.getElementById('voiceSelect');
+      if (!select) return;
+
+      availableVoices = ('speechSynthesis' in window) ? window.speechSynthesis.getVoices() : [];
+      select.innerHTML = '';
+
+      const fallbackOption = document.createElement('option');
+      fallbackOption.value = '';
+      fallbackOption.textContent = 'Browser default';
+      select.appendChild(fallbackOption);
+
+      availableVoices
+        .slice()
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        .forEach(voice => {
+          const option = document.createElement('option');
+          option.value = voice.name;
+          option.textContent = `${voice.name} (${voice.lang || 'unknown'})`;
+          select.appendChild(option);
+        });
+
+      const settings = currentVoiceSettings();
+      const preferred = preferredVoice(availableVoices);
+      const selectedName = availableVoices.some(voice => voice.name === settings.voiceName)
+        ? settings.voiceName
+        : (preferred ? preferred.name : '');
+
+      select.value = selectedName;
+
+      if (!settings.voiceName && preferred) {
+        localStorage.setItem(VOICE_NAME_STORAGE_KEY, preferred.name);
+      }
+    }
+
+    function restoreVoiceSettings() {
+      const settings = currentVoiceSettings();
+      document.getElementById('voiceRate').value = settings.rate;
+      document.getElementById('voicePitch').value = settings.pitch;
+      document.getElementById('voiceVolume').value = settings.volume;
+      updateVoiceValueDisplays();
+      populateVoiceSelect();
+    }
+
+    function saveVoiceSettings() {
+      localStorage.setItem(VOICE_NAME_STORAGE_KEY, document.getElementById('voiceSelect').value || '');
+      localStorage.setItem(VOICE_RATE_STORAGE_KEY, document.getElementById('voiceRate').value);
+      localStorage.setItem(VOICE_PITCH_STORAGE_KEY, document.getElementById('voicePitch').value);
+      localStorage.setItem(VOICE_VOLUME_STORAGE_KEY, document.getElementById('voiceVolume').value);
+      updateVoiceValueDisplays();
+    }
+
     async function handleDevFileSelection(event) {
       const file = event.target.files && event.target.files[0];
 
@@ -924,8 +1093,19 @@ textarea {
 
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1.0;
-      u.pitch = 1.0;
+      const settings = currentVoiceSettings();
+      const voice = selectedVoice();
+
+      if (voice) {
+        u.voice = voice;
+        if (voice.lang) {
+          u.lang = voice.lang;
+        }
+      }
+
+      u.rate = settings.rate;
+      u.pitch = settings.pitch;
+      u.volume = settings.volume;
       u.onend = () => updateHeaderStatus();
       u.onerror = () => updateHeaderStatus('error');
       window.speechSynthesis.speak(u);
@@ -1150,6 +1330,10 @@ textarea {
     document.getElementById('speakSitrepBtn').addEventListener('click', speakSitrep);
     document.getElementById('stopVoiceBtn').addEventListener('click', stopVoice);
     document.getElementById('voiceInputBtn').addEventListener('click', startVoiceInput);
+    document.getElementById('voiceSelect').addEventListener('change', saveVoiceSettings);
+    document.getElementById('voiceRate').addEventListener('input', saveVoiceSettings);
+    document.getElementById('voicePitch').addEventListener('input', saveVoiceSettings);
+    document.getElementById('voiceVolume').addEventListener('input', saveVoiceSettings);
 
     document.getElementById('msg').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -1174,6 +1358,7 @@ textarea {
       ensureChat();
       createChat();
       restoreModeSelection();
+      restoreVoiceSettings();
       updateModeHint();
       await loadSitrep();
 
@@ -1184,6 +1369,10 @@ textarea {
       maybeAutoMorningSitrep();
       setInterval(maybeAutoMorningSitrep, 60000);
     });
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = populateVoiceSelect;
+    }
   </script>
 </body>
 </html>

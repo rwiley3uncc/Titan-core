@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 
 from fastapi import APIRouter, Query
 
@@ -9,6 +10,7 @@ from titan_core.config import settings
 from titan_core.outlook_feed import import_outlook_ics_from_url
 from titan_core.planning import PlannerItem
 from titan_core.sitrep import build_sitrep
+from titan_core.task_store import tasks_as_planner_items
 from titan_core.weather import fetch_weather_summary
 
 router = APIRouter()
@@ -29,35 +31,123 @@ def _serialize_item(item: PlannerItem) -> dict:
     }
 
 
+def _spoken_clean(value: str | None) -> str:
+    if not value:
+        return "No data available."
+
+    text = str(value)
+    text = re.sub(r"https?://\S+", "", text)
+    text = text.replace("\\n", " ").replace("\n", " ").replace("\\,", ",")
+    text = re.sub(r"\s+", " ", text).strip(" .,:;|-")
+    return text or "No data available."
+
+
+def _spoken_when(value: str | None) -> str:
+    if not value:
+        return "No data available."
+    try:
+        return datetime.fromisoformat(value).strftime("%A, %B %d at %I:%M %p")
+    except ValueError:
+        return _spoken_clean(value)
+
+
+def _spoken_title(item: dict) -> str:
+    title = _spoken_clean(item.get("title"))
+    course = _spoken_clean(item.get("course_name"))
+    match = re.match(r"^(.*?)\s*\[(.*?)\]\s*$", title)
+    if match and course != "No data available." and _spoken_clean(match.group(2)) == course:
+        title = _spoken_clean(match.group(1))
+    return title
+
+
+def _spoken_course(item: dict) -> str:
+    return _spoken_clean(item.get("course_name"))
+
+
+def _spoken_block_title(block: dict) -> str:
+    raw_title = block.get("source_item_title") or block.get("title")
+    title = _spoken_clean(raw_title)
+    match = re.match(r"^(study:\s*)?(.*?)\s*\[(.*?)\]\s*$", title, flags=re.IGNORECASE)
+    if match:
+        prefix = match.group(1) or ""
+        core = _spoken_clean(match.group(2))
+        if prefix:
+            return f"{prefix.strip()} {core}".strip()
+        return core
+    return title
+
+
+def _spoken_priority(item: dict) -> str:
+    priority = item.get("priority")
+    if isinstance(priority, int) and priority > 0:
+        return f" Priority {priority}."
+    return ""
+
+
+def _spoken_weather(weather: str | None) -> str:
+    cleaned = _spoken_clean(weather)
+    if cleaned == "No data available.":
+        return cleaned
+
+    if ":" in cleaned:
+        location, rest = cleaned.split(":", 1)
+        location = _spoken_clean(location).title()
+        rest = _spoken_clean(rest)
+        if rest != "No data available.":
+            return f"{location}, {rest}"
+    return cleaned
+
+
+def _dedupe_items(items: list[dict]) -> list[dict]:
+    unique: list[dict] = []
+    seen: set[str] = set()
+    for item in items:
+        key = "|".join(
+            [
+                _spoken_title(item).lower(),
+                _spoken_course(item).lower(),
+                str(item.get("due_at") or item.get("starts_at") or "").lower(),
+            ]
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
 def _spoken_text(data: dict) -> str:
-    must_do = data.get("must_do_today", [])
+    must_do = _dedupe_items(data.get("must_do_today", []))
     blocks = data.get("suggested_blocks", [])
-    still_open = data.get("still_open", [])
-    today = data.get("today", [])
-    weather = data.get("weather_summary")
+    still_open = _dedupe_items(data.get("still_open", []))
+    today = _dedupe_items(data.get("today", []))
+    weather = _spoken_weather(data.get("weather_summary"))
     lines = [
-        "Good morning. Here's your briefing for today.",
-        f"Today at a glance: {len(today)} scheduled items, {len(must_do)} tasks needing attention, and {len(still_open)} still-open school tasks.",
+        "Good morning. Here is your briefing.",
+        f"Today you have {len(today)} scheduled items.",
     ]
 
     if must_do:
         top_item = must_do[0]
-        title = top_item.get("title") or "No data available."
-        course = top_item.get("course_name") or "No data available."
-        due = top_item.get("due_at") or top_item.get("starts_at") or "No data available."
-        lines.append(f"Top priority: {title}. Course: {course}. Due: {due}.")
+        title = _spoken_title(top_item)
+        course = _spoken_course(top_item)
+        due = _spoken_when(top_item.get("due_at") or top_item.get("starts_at"))
+        lines.append(
+            f"Your top priority is: {title}, for {course}, due {due}.{_spoken_priority(top_item)}"
+        )
     else:
-        lines.append("Top priority: No data available.")
+        lines.append("Your top priority is: No data available.")
 
     if blocks:
         block = blocks[0]
-        title = block.get("title") or "No data available."
-        start = block.get("starts_at") or "No data available."
-        lines.append(f"Recommended next step: {title}. Start: {start}.")
+        title = _spoken_block_title(block)
+        start = _spoken_when(block.get("starts_at"))
+        lines.append(f"Your next recommended study block is: {title}, starting {start}.")
     else:
-        lines.append("Recommended next step: No data available.")
+        lines.append("Your next recommended study block is: No data available.")
 
-    lines.append(f"Weather: {weather or 'No data available.'}")
+    lines.append(f"Open tasks needing attention: {len(still_open)}.")
+    lines.append(f"Weather: {weather}.")
     return " ".join(lines)
 
 
@@ -70,6 +160,10 @@ def build_sitrep_payload(
     warnings: list[str] = []
     all_items: list[PlannerItem] = []
     source_counts: dict[str, int] = {}
+
+    task_items = tasks_as_planner_items()
+    all_items.extend(task_items)
+    source_counts["titan_tasks"] = len(task_items)
 
     if settings.canvas_ics_url:
         try:

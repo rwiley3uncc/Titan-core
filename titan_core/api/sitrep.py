@@ -46,12 +46,11 @@ def _spoken_text(data: dict) -> str:
     return " ".join(lines)
 
 
-@router.get("/sitrep")
-def get_sitrep(
-    weather_summary: str | None = Query(default=None),
-    now_iso: str | None = Query(default=None),
-    weather_location: str | None = Query(default="Charlotte"),
-):
+def build_sitrep_payload(
+    weather_summary: str | None = None,
+    now_iso: str | None = None,
+    weather_location: str | None = "Charlotte",
+) -> dict:
     now = datetime.fromisoformat(now_iso) if now_iso else datetime.now()
     warnings: list[str] = []
     all_items: list[PlannerItem] = []
@@ -117,3 +116,16 @@ def get_sitrep(
     }
     payload["spoken_text"] = _spoken_text(payload)
     return payload
+
+
+@router.get("/sitrep")
+def get_sitrep(
+    weather_summary: str | None = Query(default=None),
+    now_iso: str | None = Query(default=None),
+    weather_location: str | None = Query(default="Charlotte"),
+):
+    return build_sitrep_payload(
+        weather_summary=weather_summary,
+        now_iso=now_iso,
+        weather_location=weather_location,
+    )

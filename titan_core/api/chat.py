@@ -9,17 +9,19 @@ Purpose:
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Iterable
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from titan_core.brain import run_brain
+from titan_core.api.sitrep import build_sitrep_payload
 from titan_core.config import settings
 from titan_core.db import get_db
 from titan_core.models import MemoryItem, User
 from titan_core.rules import propose_actions
-from titan_core.schemas import BrainInput, ChatMessage, ChatRequest, ChatResponse
+from titan_core.schemas import BrainInput, ChatMessage, ChatRequest, ChatResponse, ProposedAction
 
 router = APIRouter()
 
@@ -31,6 +33,8 @@ SYNONYM_GROUPS = (
     {"branch", "military", "service", "army", "navy", "marines", "marine", "air", "force", "coast", "guard", "space"},
     {"wife", "spouse"}, {"husband", "spouse"}, {"son", "child", "kid"}, {"daughter", "child", "kid"}, {"dog", "pet"}, {"cat", "pet"}, {"job", "work", "career"}, {"home", "house", "live"}, {"favorite", "prefer", "best"},
 )
+PERSONAL_ASSISTANT_MODES = {"personal_general", "personal_productivity", "personal_builder", "personal_family"}
+GROUNDING_FALLBACK = "I don't know based on the information I have."
 
 def normalize_text(text: str) -> str:
     if not text:
@@ -145,10 +149,320 @@ def build_brain_input(db: Session, user: User, req: ChatRequest, clean_text: str
     safe_mode = req.mode if req.mode in {"personal_general", "personal_productivity", "personal_builder", "personal_family", "development_assistant"} else "personal_general"
     return BrainInput(user_id=user.id, role=user.role, mode=safe_mode, tools=[], messages=[ChatMessage(role="system", content=recent_memory_context(db, user.id)), ChatMessage(role="user", content=clean_text)])
 
+
+def safe_mode(req: ChatRequest) -> str:
+    return req.mode if req.mode in {"personal_general", "personal_productivity", "personal_builder", "personal_family", "development_assistant"} else "personal_general"
+
+
+def is_personal_assistant_mode(mode: str) -> bool:
+    return mode in PERSONAL_ASSISTANT_MODES
+
+
+def format_when(value: str | None) -> str:
+    if not value:
+        return "no time listed"
+    try:
+        return datetime.fromisoformat(value).strftime("%A, %B %d at %I:%M %p")
+    except ValueError:
+        return value
+
+
+def _action(action_type: str, label: str, **args) -> ProposedAction:
+    return ProposedAction(type=action_type, label=label, args=args)
+
+
+def detect_personal_intent(text: str) -> str | None:
+    normalized = normalize_text(text)
+
+    if any(phrase in normalized for phrase in ("refresh my sitrep", "refresh sitrep", "reload sitrep", "update sitrep")):
+        return "refresh_sitrep"
+    if any(phrase in normalized for phrase in ("read my sitrep", "read sitrep", "speak sitrep", "say my sitrep")):
+        return "read_sitrep"
+    if any(phrase in normalized for phrase in ("what should i study next", "what should i work on next", "study next", "next study block")):
+        return "study_next"
+    if any(phrase in normalized for phrase in ("show my open tasks", "show open tasks", "what is still open", "what's still open", "still open", "open tasks")):
+        return "still_open"
+    if any(phrase in normalized for phrase in ("summarize my must-do tasks", "summarize my must do tasks", "must-do tasks", "must do tasks", "what must i do today")):
+        return "must_do_today"
+    if any(phrase in normalized for phrase in ("make me a study plan", "make me a daily plan", "build me a study plan", "build a study plan", "daily plan", "plan my day")):
+        return "daily_plan"
+    if any(phrase in normalized for phrase in ("next deadline", "what is my next deadline", "what's my next deadline")):
+        return "next_deadline"
+    if any(phrase in normalized for phrase in ("what do i need to do today", "what should i do today", "what is on today's schedule", "what's on today's schedule", "what is on todays schedule", "what's on todays schedule")):
+        return "daily_overview"
+    if "schedule" in normalized and "today" in normalized:
+        return "schedule_today"
+
+    return None
+
+
+def missing_source_reply(intent: str, payload: dict) -> str:
+    config = payload.get("configuration", {})
+    needs_canvas = intent in {"must_do_today", "still_open", "study_next", "daily_plan", "next_deadline", "daily_overview"}
+    needs_schedule = intent in {"schedule_today", "daily_plan", "daily_overview"}
+    sources: list[str] = []
+
+    if needs_canvas and not config.get("canvas_feed_configured"):
+        sources.append("a configured Canvas ICS feed")
+    if needs_schedule and not config.get("outlook_feed_configured"):
+        sources.append("a configured Outlook ICS feed")
+    if needs_schedule and not config.get("canvas_feed_configured") and "a configured Canvas ICS feed" not in sources:
+        sources.append("a configured Canvas ICS feed")
+
+    if sources:
+        return f"{GROUNDING_FALLBACK} I would need {', '.join(sources)} to answer from real sitrep/dashboard data."
+
+    return f"{GROUNDING_FALLBACK} The current sitrep/dashboard data does not include enough verified information for that."
+
+
+def format_item_line(item: dict) -> str:
+    title = item.get("title", "Untitled item")
+    due = item.get("due_at")
+    starts = item.get("starts_at")
+    course = item.get("course_name")
+    source = item.get("source")
+    parts = [title]
+    if course:
+        parts.append(f"course: {course}")
+    if due:
+        parts.append(f"due: {format_when(due)}")
+    elif starts:
+        parts.append(f"time: {format_when(starts)}")
+    if source:
+        parts.append(f"source: {source}")
+    return " | ".join(parts)
+
+
+def personal_assistant_response(intent: str, payload: dict) -> ChatResponse:
+    today = payload.get("today", [])
+    must_do = payload.get("must_do_today", [])
+    still_open = payload.get("still_open", [])
+    suggested_blocks = payload.get("suggested_blocks", [])
+    generated_at = payload.get("generated_at")
+    generated_label = format_when(generated_at)
+    config = payload.get("configuration", {})
+
+    if intent == "refresh_sitrep":
+        reply = (
+            "I can refresh the sitrep from the current data sources. "
+            "Use the Refresh Sitrep action or button to reload the dashboard data."
+        )
+        return ChatResponse(
+            reply=reply,
+            proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+        )
+
+    if intent == "read_sitrep":
+        reply = (
+            "I can read the current sitrep aloud using the dashboard's Read Sitrep behavior. "
+            f"The current sitrep/dashboard data was generated at {generated_label}."
+        )
+        return ChatResponse(
+            reply=reply,
+            proposed_actions=[_action("read_sitrep", "Read current sitrep aloud", implemented=True)],
+        )
+
+    if intent == "schedule_today":
+        if not today:
+            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+                return ChatResponse(
+                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any scheduled items for today.",
+                    proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+                )
+            return ChatResponse(
+                reply=missing_source_reply(intent, payload),
+                proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+            )
+        lines = [f"Based on the current sitrep/dashboard data generated at {generated_label}, your schedule today includes {len(today)} item(s):"]
+        lines.extend(f"- {format_item_line(item)}" for item in today[:5])
+        return ChatResponse(
+            reply="\n".join(lines),
+            proposed_actions=[
+                _action("show_schedule", "Review today's schedule", implemented=False),
+                _action("refresh_sitrep", "Refresh sitrep", implemented=True),
+            ],
+        )
+
+    if intent == "must_do_today":
+        if not must_do:
+            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+                return ChatResponse(
+                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any must-do items due today.",
+                    proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+                )
+            return ChatResponse(
+                reply=missing_source_reply(intent, payload),
+                proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+            )
+        lines = [f"Based on the current sitrep/dashboard data generated at {generated_label}, these are your must-do items for today:"]
+        lines.extend(f"- {format_item_line(item)}" for item in must_do[:5])
+        return ChatResponse(
+            reply="\n".join(lines),
+            proposed_actions=[
+                _action("show_must_do", "Review must-do tasks", implemented=False),
+                _action("build_study_plan", "Build study plan", implemented=False),
+            ],
+        )
+
+    if intent == "still_open":
+        if not still_open:
+            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+                return ChatResponse(
+                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any still-open tasks right now.",
+                    proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+                )
+            return ChatResponse(
+                reply=missing_source_reply(intent, payload),
+                proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+            )
+        lines = [f"Based on the current sitrep/dashboard data generated at {generated_label}, these open items still need attention:"]
+        lines.extend(f"- {format_item_line(item)}" for item in still_open[:6])
+        return ChatResponse(
+            reply="\n".join(lines),
+            proposed_actions=[
+                _action("show_still_open", "Review open tasks", implemented=False),
+                _action("build_study_plan", "Build study plan", implemented=False),
+            ],
+        )
+
+    if intent == "study_next":
+        if not suggested_blocks:
+            if still_open:
+                return ChatResponse(
+                    reply=(
+                        f"Based on the current sitrep/dashboard data generated at {generated_label}, "
+                        "I don't know which study block to recommend because no suggested block is available yet."
+                    ),
+                    proposed_actions=[_action("build_study_plan", "Review suggested study blocks", implemented=False)],
+                )
+            return ChatResponse(
+                reply=missing_source_reply(intent, payload),
+                proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+            )
+        block = suggested_blocks[0]
+        reply = (
+            f"Based on the current sitrep/dashboard data generated at {generated_label}, "
+            f"your next study block is {block.get('title', 'Study block')} starting {format_when(block.get('starts_at'))}. "
+            f"Reason: {block.get('reason', 'No reason listed')}."
+        )
+        return ChatResponse(
+            reply=reply,
+            proposed_actions=[
+                _action("build_study_plan", "Review suggested study blocks", implemented=False),
+                _action("show_still_open", "Review open tasks", implemented=False),
+            ],
+        )
+
+    if intent == "daily_plan":
+        if not today and not must_do and not suggested_blocks:
+            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+                return ChatResponse(
+                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any schedule, must-do, or study-block items right now.",
+                    proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+                )
+            return ChatResponse(
+                reply=missing_source_reply(intent, payload),
+                proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+            )
+        lines = [f"Based on the current sitrep/dashboard data generated at {generated_label}, here is your grounded plan for today:"]
+        if today:
+            lines.append(f"- Schedule items today: {len(today)}")
+        if must_do:
+            lines.append(f"- Must-do items today: {len(must_do)}")
+            lines.extend(f"  {index + 1}. {format_item_line(item)}" for index, item in enumerate(must_do[:3]))
+        if suggested_blocks:
+            lines.append(f"- Suggested next study block: {suggested_blocks[0].get('title', 'Study block')} at {format_when(suggested_blocks[0].get('starts_at'))}")
+        return ChatResponse(
+            reply="\n".join(lines),
+            proposed_actions=[
+                _action("show_must_do", "Review must-do tasks", implemented=False),
+                _action("build_study_plan", "Review suggested study blocks", implemented=False),
+                _action("refresh_sitrep", "Refresh sitrep", implemented=True),
+            ],
+        )
+
+    if intent == "next_deadline":
+        candidates = [item for item in must_do if item.get("due_at")] + [item for item in still_open if item.get("due_at")]
+        if not candidates:
+            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+                return ChatResponse(
+                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any upcoming deadlines.",
+                    proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+                )
+            return ChatResponse(
+                reply=missing_source_reply(intent, payload),
+                proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+            )
+        candidates.sort(key=lambda item: item.get("due_at") or "")
+        next_item = candidates[0]
+        reply = (
+            f"Based on the current sitrep/dashboard data generated at {generated_label}, "
+            f"your next listed deadline is {next_item.get('title', 'Untitled item')} due {format_when(next_item.get('due_at'))}."
+        )
+        return ChatResponse(
+            reply=reply,
+            proposed_actions=[
+                _action("show_must_do", "Review must-do tasks", implemented=False),
+                _action("show_still_open", "Review open tasks", implemented=False),
+            ],
+        )
+
+    if intent == "daily_overview":
+        if not today and not must_do and not suggested_blocks:
+            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+                return ChatResponse(
+                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any scheduled items, must-do tasks, or suggested study blocks for today.",
+                    proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+                )
+            return ChatResponse(
+                reply=missing_source_reply(intent, payload),
+                proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+            )
+        lines = [f"Based on the current sitrep/dashboard data generated at {generated_label}:"]
+        lines.append(f"- Scheduled today: {len(today)} item(s)")
+        lines.append(f"- Must-do today: {len(must_do)} item(s)")
+        if must_do:
+            lines.append(f"- Top must-do: {format_item_line(must_do[0])}")
+        if suggested_blocks:
+            lines.append(
+                f"- Suggested next study block: {suggested_blocks[0].get('title', 'Study block')} at {format_when(suggested_blocks[0].get('starts_at'))}"
+            )
+        return ChatResponse(
+            reply="\n".join(lines),
+            proposed_actions=[
+                _action("show_schedule", "Review today's schedule", implemented=False),
+                _action("show_must_do", "Review must-do tasks", implemented=False),
+                _action("build_study_plan", "Review suggested study blocks", implemented=False),
+            ],
+        )
+
+    return ChatResponse(reply=GROUNDING_FALLBACK, proposed_actions=[])
+
+
+def personal_unknown_response(text: str) -> ChatResponse:
+    normalized = normalize_text(text)
+    if any(word in normalized for word in ("canvas", "assignment", "deadline", "class", "schedule", "study", "task")):
+        return ChatResponse(
+            reply=f"{GROUNDING_FALLBACK} I would need current sitrep/dashboard data from the configured Canvas or Outlook feeds to answer that.",
+            proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+        )
+    if any(word in normalized for word in ("email", "inbox", "mail")):
+        return ChatResponse(
+            reply=f"{GROUNDING_FALLBACK} I would need an email integration to answer from real inbox data.",
+            proposed_actions=[],
+        )
+    if any(word in normalized for word in ("weather", "temperature", "forecast")):
+        return ChatResponse(
+            reply=f"{GROUNDING_FALLBACK} I would need a working weather source to answer that reliably.",
+            proposed_actions=[],
+        )
+    return ChatResponse(reply=GROUNDING_FALLBACK, proposed_actions=[])
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     user = get_default_mvp_user(db)
     clean_text = req.message.strip()
+    mode = safe_mode(req)
     if not clean_text:
         return ChatResponse(reply="Please enter a message.", proposed_actions=[])
     if is_memory_save_request(clean_text):
@@ -169,6 +483,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     memory_match = find_memory_match(db, user.id, clean_text)
     if memory_match:
         return ChatResponse(reply=answer_from_memory(clean_text, memory_match), proposed_actions=[])
+    if is_personal_assistant_mode(mode):
+        intent = detect_personal_intent(clean_text)
+        if intent:
+            payload = build_sitrep_payload(weather_summary="")
+            return personal_assistant_response(intent, payload)
     actions = propose_actions(clean_text)
     if actions:
         top_action = actions[0]
@@ -182,6 +501,8 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         else:
             reply = "I can perform that action."
         return ChatResponse(reply=reply, proposed_actions=actions)
+    if is_personal_assistant_mode(mode):
+        return personal_unknown_response(clean_text)
     out = run_brain(build_brain_input(db, user, req, clean_text), db=db, user_id=user.id)
     return ChatResponse(reply=out.reply, proposed_actions=out.proposed_actions)
 

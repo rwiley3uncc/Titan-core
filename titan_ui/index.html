@@ -553,7 +553,7 @@ textarea {
 
         if (!response.ok) {
           document.getElementById('sitrepText').textContent = 'Failed to load sitrep.';
-          return;
+          return false;
         }
 
         const data = await response.json();
@@ -570,28 +570,31 @@ textarea {
         renderList('mustDoList', data.must_do_today || [], itemCard);
         renderList('stillOpenList', data.still_open || [], itemCard);
         renderList('suggestedBlocksList', data.suggested_blocks || [], blockCard);
+        return true;
       } catch (error) {
         console.error(error);
         document.getElementById('sitrepText').textContent = 'Error contacting sitrep backend.';
+        return false;
       }
     }
 
     function speakSitrep() {
       if (!('speechSynthesis' in window)) {
         alert('Speech synthesis is not supported in this browser.');
-        return;
+        return false;
       }
 
       const text = (latestSitrepPayload && latestSitrepPayload.spoken_text)
         || document.getElementById('sitrepText').textContent;
 
-      if (!text) return;
+      if (!text) return false;
 
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.rate = 1.0;
       u.pitch = 1.0;
       window.speechSynthesis.speak(u);
+      return true;
     }
 
     function stopVoice() {
@@ -663,16 +666,20 @@ textarea {
 
         const text = document.createElement('div');
         text.className = 'action-text';
-        text.textContent =
-          `${index + 1}. ${action.type || 'unknown'}`
-          + `${action.app ? ' | app: ' + action.app : ''}`
-          + `${action.info ? ' | info: ' + action.info : ''}`
-          + `${action.value ? ' | value: ' + action.value : ''}`
-          + `${action.reason ? ' | reason: ' + action.reason : ''}`;
+        const parts = [`${index + 1}. ${action.label || action.type || 'unknown'}`];
+        if (action.app) parts.push('app: ' + action.app);
+        if (action.args && action.args.implemented === false) parts.push('status: not implemented');
+        if (action.args && action.args.implemented === true) parts.push('status: available');
+        if (action.args && action.args.note) parts.push(action.args.note);
+        text.textContent = parts.join(' | ');
 
         line.appendChild(text);
 
-        const isExecutable = action.type === 'open_app' || action.type === 'open_url';
+        const isExecutable =
+          action.type === 'open_app'
+          || action.type === 'open_url'
+          || action.type === 'refresh_sitrep'
+          || action.type === 'read_sitrep';
         if (isExecutable) {
           const btn = document.createElement('button');
           btn.type = 'button';
@@ -720,6 +727,28 @@ textarea {
     }
 
     async function executeAction(action) {
+      if (action.type === 'refresh_sitrep') {
+        const ok = await loadSitrep();
+        appendChatMessage(
+          'TITAN',
+          ok
+            ? 'I refreshed the sitrep from the current dashboard data sources.'
+            : "I don't know based on the information I have. The sitrep refresh did not succeed."
+        );
+        return;
+      }
+
+      if (action.type === 'read_sitrep') {
+        const ok = speakSitrep();
+        appendChatMessage(
+          'TITAN',
+          ok
+            ? 'I started reading the current sitrep aloud.'
+            : "I don't know based on the information I have. Speech synthesis is unavailable in this browser."
+        );
+        return;
+      }
+
       try {
         const response = await fetch('/api/execute', {
           method: 'POST',

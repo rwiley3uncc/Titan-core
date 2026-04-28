@@ -429,6 +429,36 @@ textarea {
       chat.scrollTop = chat.scrollHeight;
     }
 
+    function appendConversationText(defaultSender, text) {
+      const messageText = String(text || '').trim();
+
+      if (!messageText) {
+        appendChatMessage(defaultSender, '');
+        return;
+      }
+
+      const speakerMatches = messageText.match(/\b(?:YOU|TITAN):/g) || [];
+      if (speakerMatches.length <= 1) {
+        appendChatMessage(defaultSender, messageText);
+        return;
+      }
+
+      const parts = messageText.split(/(YOU:|TITAN:)/);
+      let currentSender = null;
+
+      parts.forEach(part => {
+        const token = String(part || '').trim();
+        if (!token) return;
+
+        if (token === 'YOU:' || token === 'TITAN:') {
+          currentSender = token.slice(0, -1);
+          return;
+        }
+
+        appendChatMessage(currentSender || defaultSender, token);
+      });
+    }
+
     function currentMode() {
       return document.getElementById('assistantMode').value || 'personal_general';
     }
@@ -680,7 +710,7 @@ textarea {
         }
 
         const data = await response.json();
-        appendChatMessage('TITAN', data.reply || 'No reply returned.');
+        appendConversationText('TITAN', data.reply || 'No reply returned.');
         renderActions(data.proposed_actions || []);
       } catch (error) {
         console.error(error);

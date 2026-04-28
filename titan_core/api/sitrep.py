@@ -46,16 +46,17 @@ def _spoken_when(value: str | None) -> str:
     if not value:
         return "No data available."
     try:
-        return datetime.fromisoformat(value).strftime("%A, %B %d at %I:%M %p")
+        dt = datetime.fromisoformat(value)
+        time_part = dt.strftime("%I:%M %p").lstrip("0").replace(":00 ", " ")
+        return f"{dt.strftime('%A')} at {time_part}"
     except ValueError:
         return _spoken_clean(value)
 
 
 def _spoken_title(item: dict) -> str:
     title = _spoken_clean(item.get("title"))
-    course = _spoken_clean(item.get("course_name"))
     match = re.match(r"^(.*?)\s*\[(.*?)\]\s*$", title)
-    if match and course != "No data available." and _spoken_clean(match.group(2)) == course:
+    if match:
         title = _spoken_clean(match.group(1))
     return title
 
@@ -80,7 +81,7 @@ def _spoken_block_title(block: dict) -> str:
 def _spoken_priority(item: dict) -> str:
     priority = item.get("priority")
     if isinstance(priority, int) and priority > 0:
-        return f" Priority {priority}."
+        return f"Priority {priority}."
     return ""
 
 
@@ -116,6 +117,11 @@ def _dedupe_items(items: list[dict]) -> list[dict]:
     return unique
 
 
+def _count_phrase(count: int, singular: str, plural: str | None = None) -> str:
+    noun = singular if count == 1 else (plural or f"{singular}s")
+    return f"{count} {noun}"
+
+
 def _spoken_text(data: dict) -> str:
     must_do = _dedupe_items(data.get("must_do_today", []))
     blocks = data.get("suggested_blocks", [])
@@ -123,8 +129,9 @@ def _spoken_text(data: dict) -> str:
     today = _dedupe_items(data.get("today", []))
     weather = _spoken_weather(data.get("weather_summary"))
     lines = [
-        "Good morning. Here is your briefing.",
-        f"Today you have {len(today)} scheduled items.",
+        "Good morning.",
+        "Here is your briefing.",
+        f"You have {_count_phrase(len(today), 'scheduled item')} today.",
     ]
 
     if must_do:
@@ -132,21 +139,26 @@ def _spoken_text(data: dict) -> str:
         title = _spoken_title(top_item)
         course = _spoken_course(top_item)
         due = _spoken_when(top_item.get("due_at") or top_item.get("starts_at"))
-        lines.append(
-            f"Your top priority is: {title}, for {course}, due {due}.{_spoken_priority(top_item)}"
-        )
+        lines.append("Top priority.")
+        lines.append(title + ".")
+        lines.append(f"For {course}.")
+        lines.append(f"Due {due}.")
+        priority_line = _spoken_priority(top_item)
+        if priority_line:
+            lines.append(priority_line)
     else:
-        lines.append("Your top priority is: No data available.")
+        lines.append("Top priority. No data available.")
 
     if blocks:
         block = blocks[0]
         title = _spoken_block_title(block)
         start = _spoken_when(block.get("starts_at"))
-        lines.append(f"Your next recommended study block is: {title}, starting {start}.")
+        lines.append("Your next recommended study block.")
+        lines.append(f"{title}, starting {start}.")
     else:
-        lines.append("Your next recommended study block is: No data available.")
+        lines.append("Your next recommended study block. No data available.")
 
-    lines.append(f"Open tasks needing attention: {len(still_open)}.")
+    lines.append(f"Open tasks needing attention: {_count_phrase(len(still_open), 'task')}.")
     lines.append(f"Weather: {weather}.")
     return " ".join(lines)
 

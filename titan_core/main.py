@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from titan_core.api.chat import router as chat_router
+from titan_core.api.calendar_sources import router as calendar_sources_router
 from titan_core.api.execute import router as execute_router
 from titan_core.api.sitrep import router as sitrep_router
 from titan_core.config import settings
@@ -40,6 +41,7 @@ else:
     print(f"[WARNING] titan_ui folder not found at: {UI_DIR}")
 
 app.include_router(chat_router, prefix="/api")
+app.include_router(calendar_sources_router, prefix="/api")
 app.include_router(execute_router, prefix="/api")
 app.include_router(sitrep_router, prefix="/api")
 

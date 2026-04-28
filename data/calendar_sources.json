@@ -1,0 +1,20 @@
+[
+  {
+    "id": "school_canvas",
+    "name": "School Calendar",
+    "type": "canvas",
+    "url": "",
+    "enabled": false,
+    "created_at": "2026-04-28T15:40:00",
+    "updated_at": "2026-04-28T15:40:00"
+  },
+  {
+    "id": "personal_outlook",
+    "name": "Personal Calendar",
+    "type": "outlook",
+    "url": "",
+    "enabled": false,
+    "created_at": "2026-04-28T15:40:00",
+    "updated_at": "2026-04-28T15:40:00"
+  }
+]

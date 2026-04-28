@@ -49,3 +49,27 @@ class TaskRecord(BaseModel):
     priority: int = 0
     created_at: str
     updated_at: str
+
+
+class CalendarSourceRecord(BaseModel):
+    id: str
+    name: str
+    type: str
+    url: str
+    enabled: bool = True
+    created_at: str
+    updated_at: str
+
+
+class CalendarSourceCreate(BaseModel):
+    name: str
+    type: str
+    url: str
+    enabled: bool = False
+
+
+class CalendarSourceUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    url: Optional[str] = None
+    enabled: Optional[bool] = None

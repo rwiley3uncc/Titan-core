@@ -6,6 +6,7 @@ import re
 from fastapi import APIRouter, Query
 
 from titan_core.canvas_feed import import_canvas_ics_from_url
+from titan_core.calendar_store import list_calendar_sources
 from titan_core.config import settings
 from titan_core.outlook_feed import import_outlook_ics_from_url
 from titan_core.planning import PlannerItem
@@ -29,6 +30,24 @@ def _serialize_item(item: PlannerItem) -> dict:
         "priority": item.priority,
         "is_complete": item.is_complete,
     }
+
+
+def _with_source(items: list[PlannerItem], source_name: str) -> list[PlannerItem]:
+    return [
+        PlannerItem(
+            title=item.title,
+            kind=item.kind,
+            starts_at=item.starts_at,
+            due_at=item.due_at,
+            source=source_name,
+            details=item.details,
+            course_name=item.course_name,
+            estimated_minutes=item.estimated_minutes,
+            priority=item.priority,
+            is_complete=item.is_complete,
+        )
+        for item in items
+    ]
 
 
 def _spoken_clean(value: str | None) -> str:
@@ -176,6 +195,25 @@ def build_sitrep_payload(
     task_items = tasks_as_planner_items()
     all_items.extend(task_items)
     source_counts["titan_tasks"] = len(task_items)
+
+    enabled_saved_sources = [source for source in list_calendar_sources() if source.enabled]
+
+    if not enabled_saved_sources:
+        warnings.append("No calendar sources configured.")
+
+    for calendar_source in enabled_saved_sources:
+        if not calendar_source.enabled:
+            continue
+        try:
+            if calendar_source.type == "outlook":
+                result = import_outlook_ics_from_url(calendar_source.url)
+            else:
+                result = import_canvas_ics_from_url(calendar_source.url)
+            sourced_items = _with_source(result.items, f"calendar_source:{calendar_source.id}")
+            all_items.extend(sourced_items)
+            source_counts[f"calendar_source:{calendar_source.id}"] = len(sourced_items)
+        except Exception as exc:
+            warnings.append(f"{calendar_source.name} feed import failed: {exc}")
 
     if settings.canvas_ics_url:
         try:

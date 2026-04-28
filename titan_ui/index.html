@@ -363,6 +363,54 @@ textarea {
   color: var(--muted);
 }
 
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.settings-row-meta {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.settings-row-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  width: 100%;
+}
+
+.settings-form {
+  display: none;
+  margin-top: 10px;
+}
+
+.settings-form.visible {
+  display: block;
+}
+
+.settings-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* ACTIONS */
 
 #actions {
@@ -633,7 +681,42 @@ textarea {
       <div class="modal-body">
         <div class="voice-settings" style="margin-top:0;">
           <div class="voice-settings-title">Calendar Sources</div>
-          <div class="voice-control-value">No calendar sources configured.</div>
+          <div class="button-row">
+            <button id="addCalendarSourceBtn" type="button">Add Calendar</button>
+          </div>
+          <div id="calendarSourceForm" class="settings-form">
+            <div class="voice-settings-grid" style="margin-top:10px;">
+              <div class="voice-control">
+                <label for="calendarSourceName">Name</label>
+                <input id="calendarSourceName" type="text" placeholder="Family Calendar" />
+              </div>
+              <div class="voice-control">
+                <label for="calendarSourceType">Type</label>
+                <select id="calendarSourceType">
+                  <option value="canvas">Canvas</option>
+                  <option value="outlook">Outlook</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div class="voice-control">
+                <label for="calendarSourceUrl">URL</label>
+                <input id="calendarSourceUrl" type="url" placeholder="https://example.com/calendar.ics" />
+              </div>
+              <div class="voice-control">
+                <label for="calendarSourceEnabled">Enabled</label>
+                <label class="voice-control-value" style="display:inline-flex; align-items:center; gap:6px; margin-top:8px;">
+                  <input id="calendarSourceEnabled" type="checkbox" />
+                  Enabled
+                </label>
+              </div>
+            </div>
+            <div class="button-row" style="margin-top:10px;">
+              <button id="saveCalendarSourceBtn" type="button">Save</button>
+              <button id="cancelCalendarSourceBtn" type="button">Cancel</button>
+            </div>
+          </div>
+          <div id="calendarSourceStatus" class="voice-control-value" style="margin-top:8px;"></div>
+          <div id="calendarSourcesList" class="settings-list"></div>
         </div>
         <div class="voice-settings">
           <div class="voice-settings-title">Caregiver Access</div>
@@ -693,6 +776,7 @@ textarea {
     const DEFAULT_VOICE_PITCH = 1.0;
     const DEFAULT_VOICE_VOLUME = 1.0;
     let availableVoices = [];
+    let currentCalendarSources = [];
 
     function modeStatusPrefix() {
       return currentMode() === 'development_assistant'
@@ -959,6 +1043,242 @@ textarea {
       updateVoiceValueDisplays();
     }
 
+    function calendarTypeLabel(type) {
+      if (type === 'canvas') return 'Canvas';
+      if (type === 'outlook') return 'Outlook';
+      return 'Other';
+    }
+
+    function setCalendarSourceStatus(text, isError = false) {
+      const el = document.getElementById('calendarSourceStatus');
+      if (!el) return;
+      el.textContent = text || '';
+      el.style.color = isError ? '#b91c1c' : 'var(--muted)';
+    }
+
+    function resetCalendarSourceForm() {
+      document.getElementById('calendarSourceName').value = '';
+      document.getElementById('calendarSourceType').value = 'canvas';
+      document.getElementById('calendarSourceUrl').value = '';
+      document.getElementById('calendarSourceEnabled').checked = false;
+    }
+
+    function showCalendarSourceForm() {
+      document.getElementById('calendarSourceForm').classList.add('visible');
+      setCalendarSourceStatus('');
+    }
+
+    function hideCalendarSourceForm() {
+      document.getElementById('calendarSourceForm').classList.remove('visible');
+      resetCalendarSourceForm();
+    }
+
+    async function responseDetail(response) {
+      try {
+        const data = await response.json();
+        return data.detail || data.message || response.statusText;
+      } catch {
+        return response.statusText || 'Request failed.';
+      }
+    }
+
+    function renderCalendarSources() {
+      const el = document.getElementById('calendarSourcesList');
+      if (!el) return;
+
+      if (!currentCalendarSources.length) {
+        el.innerHTML = '<div class="voice-control-value">No calendar sources configured.</div>';
+        return;
+      }
+
+      el.innerHTML = '';
+      currentCalendarSources.forEach(source => {
+        const row = document.createElement('div');
+        row.className = 'settings-row';
+
+        const info = document.createElement('div');
+        info.style.flex = '1';
+
+        const title = document.createElement('div');
+        title.innerHTML = `<strong>${source.id === 'school_canvas' || source.id === 'personal_outlook' ? source.name : source.name}</strong>`;
+        info.appendChild(title);
+
+        const fields = document.createElement('div');
+        fields.className = 'settings-row-fields';
+
+        const nameControl = document.createElement('div');
+        nameControl.className = 'voice-control';
+        nameControl.innerHTML = `<label>Name</label>`;
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.value = source.name;
+        nameControl.appendChild(nameInput);
+
+        const typeControl = document.createElement('div');
+        typeControl.className = 'voice-control';
+        typeControl.innerHTML = `<label>Type</label>`;
+        const typeSelect = document.createElement('select');
+        ['canvas', 'outlook', 'other'].forEach(type => {
+          const option = document.createElement('option');
+          option.value = type;
+          option.textContent = calendarTypeLabel(type);
+          if (source.type === type) option.selected = true;
+          typeSelect.appendChild(option);
+        });
+        typeControl.appendChild(typeSelect);
+
+        const urlControl = document.createElement('div');
+        urlControl.className = 'voice-control';
+        urlControl.style.gridColumn = '1 / -1';
+        urlControl.innerHTML = `<label>URL</label>`;
+        const urlInput = document.createElement('input');
+        urlInput.type = 'url';
+        urlInput.value = source.url || '';
+        urlInput.placeholder = 'https://example.com/calendar.ics';
+        urlControl.appendChild(urlInput);
+
+        fields.appendChild(nameControl);
+        fields.appendChild(typeControl);
+        fields.appendChild(urlControl);
+        info.appendChild(fields);
+
+        const actions = document.createElement('div');
+        actions.className = 'settings-row-actions';
+        actions.style.flexDirection = 'column';
+        actions.style.alignItems = 'stretch';
+
+        const toggleLabel = document.createElement('label');
+        toggleLabel.className = 'voice-control-value';
+        toggleLabel.style.display = 'inline-flex';
+        toggleLabel.style.alignItems = 'center';
+        toggleLabel.style.gap = '6px';
+
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.checked = !!source.enabled;
+        toggleLabel.appendChild(toggle);
+        toggleLabel.appendChild(document.createTextNode('Enabled'));
+
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.textContent = 'Save';
+        saveBtn.addEventListener('click', () => updateCalendarSource(source.id, {
+          name: nameInput.value.trim(),
+          type: typeSelect.value,
+          url: urlInput.value.trim(),
+          enabled: toggle.checked,
+        }));
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', () => deleteCalendarSource(source.id));
+
+        actions.appendChild(toggleLabel);
+        actions.appendChild(saveBtn);
+        actions.appendChild(deleteBtn);
+        row.appendChild(info);
+        row.appendChild(actions);
+        el.appendChild(row);
+      });
+    }
+
+    async function loadCalendarSources() {
+      try {
+        const response = await fetch('/api/calendar-sources');
+        if (!response.ok) {
+          setCalendarSourceStatus('Failed to load calendar sources.', true);
+          return;
+        }
+        currentCalendarSources = await response.json();
+        renderCalendarSources();
+        setCalendarSourceStatus('');
+      } catch (error) {
+        console.error(error);
+        setCalendarSourceStatus('Failed to load calendar sources.', true);
+      }
+    }
+
+    async function addCalendarSource() {
+      const nameInput = document.getElementById('calendarSourceName');
+      const typeInput = document.getElementById('calendarSourceType');
+      const urlInput = document.getElementById('calendarSourceUrl');
+      const enabledInput = document.getElementById('calendarSourceEnabled');
+      const name = nameInput.value.trim();
+      const type = typeInput.value;
+      const url = urlInput.value.trim();
+
+      if (!name || !url) {
+        setCalendarSourceStatus('Invalid calendar URL.', true);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/calendar-sources', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, type, url, enabled: enabledInput.checked }),
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          setCalendarSourceStatus(detail || 'Failed to save calendar source.', true);
+          return;
+        }
+
+        setCalendarSourceStatus('Calendar source saved.');
+        hideCalendarSourceForm();
+        await loadCalendarSources();
+      } catch (error) {
+        console.error(error);
+        setCalendarSourceStatus('Failed to save calendar source.', true);
+      }
+    }
+
+    async function updateCalendarSource(sourceId, payload) {
+      try {
+        const response = await fetch(`/api/calendar-sources/${encodeURIComponent(sourceId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          setCalendarSourceStatus(detail || 'Failed to update calendar source.', true);
+          await loadCalendarSources();
+          return;
+        }
+
+        setCalendarSourceStatus('Calendar source updated.');
+        await loadCalendarSources();
+      } catch (error) {
+        console.error(error);
+        setCalendarSourceStatus('Failed to update calendar source.', true);
+        await loadCalendarSources();
+      }
+    }
+
+    async function deleteCalendarSource(sourceId) {
+      try {
+        const response = await fetch(`/api/calendar-sources/${encodeURIComponent(sourceId)}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          setCalendarSourceStatus(detail || 'Failed to delete calendar source.', true);
+          return;
+        }
+
+        setCalendarSourceStatus('Calendar source deleted.');
+        await loadCalendarSources();
+      } catch (error) {
+        console.error(error);
+        setCalendarSourceStatus('Failed to delete calendar source.', true);
+      }
+    }
+
     async function handleDevFileSelection(event) {
       const file = event.target.files && event.target.files[0];
 
@@ -1215,6 +1535,8 @@ textarea {
       const modal = document.getElementById('settingsModal');
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
+      hideCalendarSourceForm();
+      loadCalendarSources();
     }
 
     function closeSettingsModal() {
@@ -1375,6 +1697,9 @@ textarea {
     document.getElementById('voiceRate').addEventListener('input', saveVoiceSettings);
     document.getElementById('voicePitch').addEventListener('input', saveVoiceSettings);
     document.getElementById('voiceVolume').addEventListener('input', saveVoiceSettings);
+    document.getElementById('addCalendarSourceBtn').addEventListener('click', showCalendarSourceForm);
+    document.getElementById('saveCalendarSourceBtn').addEventListener('click', addCalendarSource);
+    document.getElementById('cancelCalendarSourceBtn').addEventListener('click', hideCalendarSourceForm);
 
     document.getElementById('msg').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) {

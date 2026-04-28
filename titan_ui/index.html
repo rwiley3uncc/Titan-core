@@ -283,6 +283,79 @@ textarea {
   overflow-y: auto;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 24px;
+  z-index: 50;
+}
+
+.modal-backdrop.open {
+  display: flex;
+}
+
+.modal {
+  width: min(680px, 100%);
+  max-height: 80vh;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header,
+.modal-footer {
+  padding: 16px 18px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-footer {
+  border-bottom: none;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modal-body {
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 20px;
+  color: var(--header);
+}
+
+.actions-empty {
+  color: var(--muted);
+}
+
+.action-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.action-line:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.action-text {
+  line-height: 1.45;
+}
+
 .footer {
   text-align: center;
   font-size: 12px;
@@ -372,12 +445,8 @@ textarea {
           <div class="button-row" style="margin-top:10px;">
             <button id="sendBtn" type="button">Send</button>
             <button id="newChatBtn" type="button">New Chat</button>
+            <button id="openActionsBtn" type="button">Proposed Actions</button>
           </div>
-        </div>
-
-        <div class="panel">
-          <h3>Proposed Actions</h3>
-          <div id="actions">(none)</div>
         </div>
       </div>
     </div>
@@ -385,10 +454,25 @@ textarea {
     <div class="footer">Titan Core — Dashboard + Chat Prototype</div>
   </div>
 
+  <div id="actionsModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="actionsModalTitle">
+      <div class="modal-header">
+        <h3 id="actionsModalTitle" class="modal-title">Proposed Actions</h3>
+      </div>
+      <div class="modal-body">
+        <div id="actions">No proposed actions available.</div>
+      </div>
+      <div class="modal-footer">
+        <button id="closeActionsBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentChatId = null;
     let latestSitrepPayload = null;
     let recognition = null;
+    let currentProposedActions = [];
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
     const INITIAL_TITAN_GREETING = 'Online. How can I help?';
 
@@ -404,7 +488,8 @@ textarea {
       const chat = document.getElementById('chat');
       chat.innerHTML = '';
       appendChatMessage('TITAN', INITIAL_TITAN_GREETING);
-      document.getElementById('actions').textContent = '(none)';
+      currentProposedActions = [];
+      renderActions([]);
       document.getElementById('msg').value = '';
     }
 
@@ -650,17 +735,30 @@ textarea {
       }
     }
 
+    function openActionsModal() {
+      const modal = document.getElementById('actionsModal');
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeActionsModal() {
+      const modal = document.getElementById('actionsModal');
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
     function renderActions(actions) {
       const el = document.getElementById('actions');
+      currentProposedActions = Array.isArray(actions) ? actions : [];
 
-      if (!actions || actions.length === 0) {
-        el.textContent = '(none)';
+      if (!currentProposedActions.length) {
+        el.innerHTML = '<div class="actions-empty">No proposed actions available.</div>';
         return;
       }
 
       el.innerHTML = '';
 
-      actions.forEach((action, index) => {
+      currentProposedActions.forEach((action, index) => {
         const line = document.createElement('div');
         line.className = 'action-line';
 
@@ -771,6 +869,8 @@ textarea {
 
     document.getElementById('sendBtn').addEventListener('click', sendMsg);
     document.getElementById('newChatBtn').addEventListener('click', createChat);
+    document.getElementById('openActionsBtn').addEventListener('click', openActionsModal);
+    document.getElementById('closeActionsBtn').addEventListener('click', closeActionsModal);
     document.getElementById('assistantMode').addEventListener('change', () => {
       saveModeSelection();
       updateModeHint();
@@ -784,6 +884,18 @@ textarea {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMsg();
+      }
+    });
+
+    document.getElementById('actionsModal').addEventListener('click', e => {
+      if (e.target.id === 'actionsModal') {
+        closeActionsModal();
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeActionsModal();
       }
     });
 

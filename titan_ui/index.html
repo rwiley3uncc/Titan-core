@@ -37,16 +37,16 @@ body {
 .header {
   background: var(--header);
   color: #fff;
-  padding: 20px 24px;
+  padding: 14px 20px;
 }
 
 .header h1 {
-  margin: 0 0 6px;
-  font-size: 24px;
+  margin: 0 0 4px;
+  font-size: 22px;
 }
 
 .sub {
-  font-size: 13px;
+  font-size: 12px;
   opacity: 0.8;
 }
 
@@ -55,9 +55,9 @@ body {
 .container {
   max-width: 1240px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 14px 16px 12px;
 
-  height: calc(100vh - 96px);
+  height: calc(100vh - 74px);
   overflow: hidden;
 }
 
@@ -67,33 +67,36 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .button-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .mode-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-  margin-bottom: 4px;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 2px;
   flex-wrap: wrap;
 }
 
 .active-mode {
   display: inline-flex;
   align-items: center;
-  margin-top: 12px;
-  padding: 8px 12px;
+  margin-top: 8px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: #e8eef5;
   border: 1px solid #cbd5e1;
   color: #0f172a;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -103,7 +106,7 @@ body {
 }
 
 .mode-row select {
-  padding: 8px 10px;
+  padding: 7px 9px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: #fff;
@@ -118,12 +121,13 @@ body {
 }
 
 button {
-  padding: 10px 14px;
+  padding: 8px 12px;
   background: var(--accent);
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
+  font-size: 13px;
 }
 
 /* DASHBOARD */
@@ -131,9 +135,10 @@ button {
 .dashboard {
   display: grid;
   grid-template-columns: 1.25fr 1fr;
-  gap: 16px;
+  gap: 12px;
 
-  height: calc(100% - 70px);
+  height: calc(100% - 58px);
+  min-height: 0;
 }
 
 /* COLUMNS */
@@ -142,9 +147,10 @@ button {
 .right-column {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 
   height: 100%;
+  min-height: 0;
 }
 
 /* PANELS */
@@ -153,7 +159,7 @@ button {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 16px;
+  padding: 12px;
 
   overflow: hidden;
 }
@@ -161,6 +167,8 @@ button {
 .panel h2,
 .panel h3 {
   margin-top: 0;
+  margin-bottom: 8px;
+  line-height: 1.2;
 }
 
 /* TWO COLUMN GRID */
@@ -168,9 +176,10 @@ button {
 .grid-two {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 12px;
 
   flex: 1;
+  min-height: 0;
 }
 
 /* LIST PANELS */
@@ -180,6 +189,7 @@ button {
   flex-direction: column;
 
   height: 100%;
+  min-height: 0;
 }
 
 /* SCROLL WINDOW — THIS FIXES EVERYTHING */
@@ -190,7 +200,8 @@ button {
   overflow-y: auto;
   overflow-x: hidden;
 
-  max-height: 260px;
+  min-height: 0;
+  max-height: clamp(150px, 22vh, 210px);
 }
 
 /* ITEMS */
@@ -204,7 +215,7 @@ button {
 .item {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 7px 9px;
   background: #fafafa;
 }
 
@@ -220,27 +231,32 @@ button {
 
 .sitrep-text {
   white-space: pre-wrap;
-  line-height: 1.6;
+  line-height: 1.5;
+  font-size: 14px;
+  max-height: clamp(150px, 24vh, 240px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 /* CHAT */
 
 #chat {
-  min-height: 420px;
-  max-height: 520px;
+  min-height: 260px;
+  height: clamp(260px, 38vh, 430px);
+  max-height: 430px;
   overflow-y: auto;
 
   background: #fafafa;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px;
 
   font-family: Consolas, monospace;
   white-space: pre-wrap;
 }
 
 .message-row {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .message-row:last-child {
@@ -268,8 +284,8 @@ button {
 
 textarea {
   width: 100%;
-  margin-top: 10px;
-  padding: 10px;
+  margin-top: 8px;
+  padding: 9px;
 
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -277,8 +293,8 @@ textarea {
 
 .dev-upload {
   display: none;
-  margin-top: 12px;
-  padding: 12px;
+  margin-top: 10px;
+  padding: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #f8fafc;
@@ -397,6 +413,57 @@ textarea {
   text-align: center;
   font-size: 12px;
   color: #888;
+}
+
+.right-column > .panel:first-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
+  .container {
+    height: calc(100vh - 74px);
+  }
+
+  .grid-two {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #chat {
+    height: clamp(220px, 34vh, 340px);
+    max-height: 340px;
+  }
+}
+
+@media (max-width: 760px) {
+  .container {
+    padding: 12px;
+  }
+
+  .grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    padding: 10px;
+  }
+
+  .list-window {
+    max-height: 180px;
+  }
+
+  #chat {
+    height: 260px;
+    max-height: 260px;
+  }
 }
 
 </style>

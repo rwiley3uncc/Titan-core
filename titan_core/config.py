@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 
@@ -42,6 +43,41 @@ class TitanSettings:
     outlook_ics_url: str | None = (
         os.getenv("TITAN_OUTLOOK_ICS_URL") or None
     )
+
+    calendar_sources_json: str | None = (
+        os.getenv("TITAN_CALENDAR_SOURCES_JSON") or None
+    )
+
+    def configured_calendar_sources(self) -> list[dict[str, object]]:
+        raw = (self.calendar_sources_json or "").strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(parsed, list):
+            return []
+
+        normalized: list[dict[str, object]] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "Calendar").strip()
+            source_type = str(item.get("type") or "other").strip().lower()
+            url = str(item.get("url") or "").strip()
+            enabled = bool(item.get("enabled", True))
+            if not url:
+                continue
+            normalized.append(
+                {
+                    "name": name or "Calendar",
+                    "type": source_type,
+                    "url": url,
+                    "enabled": enabled,
+                }
+            )
+        return normalized
 
 
 # --------------------------------------------------

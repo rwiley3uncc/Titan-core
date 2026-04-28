@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import hashlib
+from datetime import datetime, timedelta, timezone
 import re
 
 from fastapi import APIRouter, HTTPException, Query
@@ -23,6 +24,17 @@ from titan_core.weather import fetch_weather_summary
 
 router = APIRouter()
 
+_UTC_MIN = datetime.min.replace(tzinfo=timezone.utc)
+_UTC_MAX = datetime.max.replace(tzinfo=timezone.utc)
+
+
+def _as_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
 
 def _serialize_item(item: PlannerItem) -> dict:
     item_id = stable_item_id_for_planner_item(item)
@@ -40,6 +52,21 @@ def _serialize_item(item: PlannerItem) -> dict:
         "priority": item.priority,
         "is_complete": item.is_complete,
     }
+
+
+def _serialize_item_with_sources(item: PlannerItem, source_details: dict[str, dict[str, object]]) -> dict:
+    serialized = _serialize_item(item)
+    details = source_details.get(_planner_item_key(item))
+    if not details:
+        return serialized
+
+    calendar_name = details.get("calendar_name")
+    calendar_sources = details.get("calendar_sources")
+    if isinstance(calendar_name, str) and calendar_name:
+        serialized["calendar_name"] = calendar_name
+    if isinstance(calendar_sources, list) and calendar_sources:
+        serialized["calendar_sources"] = calendar_sources
+    return serialized
 
 
 def _with_source(items: list[PlannerItem], source_name: str) -> list[PlannerItem]:
@@ -177,16 +204,17 @@ def _spoken_location(location: str | None) -> str | None:
 
 
 def _next_class_item(items: list[PlannerItem], now: datetime) -> PlannerItem | None:
-    today = now.date()
+    now_utc = _as_utc(now) or datetime.now(timezone.utc)
+    today = now_utc.date()
     candidates = [
         item
         for item in items
         if item.kind == "calendar_event"
         and item.starts_at is not None
-        and item.starts_at.date() == today
-        and item.starts_at > now
+        and (_as_utc(item.starts_at) or _UTC_MIN).date() == today
+        and (_as_utc(item.starts_at) or _UTC_MIN) > now_utc
     ]
-    candidates.sort(key=lambda item: item.starts_at or datetime.max)
+    candidates.sort(key=lambda item: _as_utc(item.starts_at) or _UTC_MAX)
     return candidates[0] if candidates else None
 
 
@@ -201,6 +229,20 @@ def _next_class_payload(item: PlannerItem | None) -> dict | None:
         "starts_at": serialized.get("starts_at"),
         "location": _spoken_clean(serialized.get("location")) if serialized.get("location") else None,
     }
+
+
+def _next_class_payload_with_sources(item: PlannerItem | None, source_details: dict[str, dict[str, object]]) -> dict | None:
+    if item is None:
+        return None
+
+    serialized = _serialize_item_with_sources(item, source_details)
+    payload = _next_class_payload(item) or {}
+    if "calendar_name" in serialized:
+        payload["calendar_name"] = serialized["calendar_name"]
+    if "calendar_sources" in serialized:
+        payload["calendar_sources"] = serialized["calendar_sources"]
+    payload["source"] = serialized.get("source")
+    return payload
 
 
 def _dedupe_items(items: list[dict]) -> list[dict]:
@@ -226,14 +268,180 @@ def _count_phrase(count: int, singular: str, plural: str | None = None) -> str:
     return f"{count} {noun}"
 
 
+def _normalized_text(value: str | None) -> str:
+    return " ".join((value or "").strip().lower().split())
+
+
+def _calendar_source_id(name: str, url: str) -> str:
+    digest = hashlib.sha1(f"{name}|{url}".encode("utf-8")).hexdigest()
+    return f"env_calendar:{digest[:12]}"
+
+
+def _planner_item_key(item: PlannerItem) -> str:
+    starts_at = _as_utc(item.starts_at)
+    due_at = _as_utc(item.due_at)
+    return "|".join(
+        [
+            _normalized_text(item.title),
+            _normalized_text(item.kind),
+            starts_at.isoformat() if starts_at else "",
+            due_at.isoformat() if due_at else "",
+            _normalized_text(item.location),
+            _normalized_text(item.course_name),
+        ]
+    )
+
+
+def _item_sort_key(item: PlannerItem) -> datetime:
+    return _as_utc(item.starts_at) or _as_utc(item.due_at) or _UTC_MAX
+
+
+def _source_detail(source_id: str, source_name: str) -> dict[str, str]:
+    return {"id": source_id, "name": source_name}
+
+
+def _merge_calendar_items(items: list[PlannerItem], source_names: dict[str, str]) -> tuple[list[PlannerItem], dict[str, dict[str, object]]]:
+    merged: list[PlannerItem] = []
+    merged_sources: dict[str, list[dict[str, str]]] = {}
+
+    # Multi-calendar imports can surface the same event more than once.
+    # Collapse those duplicates into one timeline item and keep the full list
+    # of contributing calendar names so the UI can still show provenance.
+    for item in sorted(items, key=_item_sort_key):
+        key = _planner_item_key(item)
+        source_id = item.source
+        source_name = source_names.get(source_id, source_id)
+        detail = _source_detail(source_id, source_name)
+
+        if key not in merged_sources:
+            merged.append(item)
+            merged_sources[key] = [detail]
+            continue
+
+        if all(existing["id"] != source_id for existing in merged_sources[key]):
+            merged_sources[key].append(detail)
+
+    source_details: dict[str, dict[str, object]] = {}
+    for item in merged:
+        key = _planner_item_key(item)
+        details = merged_sources.get(key, [])
+        source_details[key] = {
+            "calendar_name": ", ".join(entry["name"] for entry in details),
+            "calendar_sources": details,
+        }
+
+    return merged, source_details
+
+
+def _calendar_source_specs() -> tuple[list[dict[str, str]], list[str]]:
+    specs: list[dict[str, str]] = []
+    warnings: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    env_sources = settings.configured_calendar_sources()
+
+    def add_spec(*, source_id: str, source_name: str, source_type: str, url: str) -> None:
+        normalized_type = source_type.strip().lower()
+        normalized_url = url.strip()
+        if not normalized_url:
+            return
+        key = (normalized_type, normalized_url)
+        if key in seen:
+            return
+        seen.add(key)
+        specs.append(
+            {
+                "id": source_id,
+                "name": source_name,
+                "type": normalized_type,
+                "url": normalized_url,
+            }
+        )
+
+    for source in list_calendar_sources():
+        if not source.enabled:
+            continue
+        add_spec(
+            source_id=f"calendar_source:{source.id}",
+            source_name=source.name,
+            source_type=source.type,
+            url=source.url,
+        )
+
+    for index, source in enumerate(env_sources, start=1):
+        if not bool(source.get("enabled", True)):
+            continue
+        source_name = str(source.get("name") or f"Calendar {index}")
+        url = str(source.get("url") or "")
+        add_spec(
+            source_id=_calendar_source_id(source_name, url),
+            source_name=source_name,
+            source_type=str(source.get("type") or "other"),
+            url=url,
+        )
+
+    if settings.calendar_sources_json and not env_sources:
+        warnings.append("TITAN_CALENDAR_SOURCES_JSON is set but could not be parsed into calendar sources.")
+
+    if settings.canvas_ics_url:
+        add_spec(
+            source_id="canvas_ics",
+            source_name="Canvas ICS",
+            source_type="canvas",
+            url=settings.canvas_ics_url,
+        )
+
+    if settings.outlook_ics_url:
+        add_spec(
+            source_id="outlook_ics",
+            source_name="Outlook ICS",
+            source_type="outlook",
+            url=settings.outlook_ics_url,
+        )
+    elif settings.outlook_calendar_email:
+        warnings.append("Outlook target account is set, but TITAN_OUTLOOK_ICS_URL is missing.")
+
+    return specs, warnings
+
+
+def _load_calendar_items() -> tuple[list[PlannerItem], dict[str, int], list[str], dict[str, str]]:
+    specs, warnings = _calendar_source_specs()
+    calendar_items: list[PlannerItem] = []
+    source_counts: dict[str, int] = {}
+    source_names: dict[str, str] = {}
+
+    if not specs:
+        warnings.append("No calendar sources configured.")
+
+    # Load each feed independently so one broken calendar only adds a warning.
+    for spec in specs:
+        source_id = spec["id"]
+        source_name = spec["name"]
+        source_type = spec["type"]
+        source_url = spec["url"]
+        source_names[source_id] = source_name
+        try:
+            if source_type == "outlook":
+                result = import_outlook_ics_from_url(source_url)
+            else:
+                result = import_canvas_ics_from_url(source_url)
+            sourced_items = _with_source(result.items, source_id)
+            calendar_items.extend(sourced_items)
+            source_counts[source_id] = len(sourced_items)
+        except Exception as exc:
+            warnings.append(f"{source_name} feed import failed: {exc}")
+
+    return calendar_items, source_counts, warnings, source_names
+
+
 def _filter_dismissed_overdue(items: list[PlannerItem], now: datetime, dismissed_ids: set[str]) -> list[PlannerItem]:
+    now_utc = _as_utc(now) or datetime.now(timezone.utc)
     filtered: list[PlannerItem] = []
     for item in items:
         due = _assignment_due_value(item)
         if (
             item.kind in {"assignment", "test", "reminder"}
             and due is not None
-            and due < now
+            and due < now_utc
             and stable_item_id_for_planner_item(item) in dismissed_ids
         ):
             continue
@@ -242,10 +450,11 @@ def _filter_dismissed_overdue(items: list[PlannerItem], now: datetime, dismissed
 
 
 def _assignment_due_value(item: PlannerItem) -> datetime | None:
-    return item.due_at or item.starts_at
+    return _as_utc(item.due_at or item.starts_at)
 
 
 def _classify_assignment_items(items: list[PlannerItem], now: datetime) -> dict[str, list[PlannerItem]]:
+    now_utc = _as_utc(now) or datetime.now(timezone.utc)
     buckets: dict[str, list[PlannerItem]] = {
         "overdue": [],
         "due_today": [],
@@ -263,25 +472,29 @@ def _classify_assignment_items(items: list[PlannerItem], now: datetime) -> dict[
         if due is None:
             continue
 
-        if due < now:
+        if due < now_utc:
             buckets["overdue"].append(item)
-        elif due.date() == now.date():
+        elif due.date() == now_utc.date():
             buckets["due_today"].append(item)
-        elif due.date() == (now + timedelta(days=1)).date():
+        elif due.date() == (now_utc + timedelta(days=1)).date():
             buckets["due_tomorrow"].append(item)
-        elif due <= now + timedelta(days=7):
+        elif due <= now_utc + timedelta(days=7):
             buckets["due_this_week"].append(item)
         else:
             buckets["future"].append(item)
 
     for bucket_items in buckets.values():
-        bucket_items.sort(key=lambda item: _assignment_due_value(item) or datetime.max)
+        bucket_items.sort(key=lambda item: _assignment_due_value(item) or _UTC_MAX)
 
     return buckets
 
 
 def _serialized_assignments(items: list[PlannerItem]) -> list[dict]:
     return [_serialize_item(item) for item in items]
+
+
+def _serialized_assignments_with_sources(items: list[PlannerItem], source_details: dict[str, dict[str, object]]) -> list[dict]:
+    return [_serialize_item_with_sources(item, source_details) for item in items]
 
 
 def _with_overdue_flag(items: list[dict], overdue_ids: set[str]) -> list[dict]:
@@ -358,56 +571,23 @@ def build_sitrep_payload(
     now_iso: str | None = None,
     weather_location: str | None = "Charlotte",
 ) -> dict:
-    now = datetime.fromisoformat(now_iso) if now_iso else datetime.now()
+    now = _as_utc(datetime.fromisoformat(now_iso)) if now_iso else datetime.now(timezone.utc)
     warnings: list[str] = []
     all_items: list[PlannerItem] = []
     source_counts: dict[str, int] = {}
     dismissed_ids = dismissed_item_ids()
+    source_details: dict[str, dict[str, object]] = {}
 
     task_items = tasks_as_planner_items()
     all_items.extend(task_items)
     source_counts["titan_tasks"] = len(task_items)
 
-    enabled_saved_sources = [source for source in list_calendar_sources() if source.enabled]
-
-    if not enabled_saved_sources:
-        warnings.append("No calendar sources configured.")
-
-    for calendar_source in enabled_saved_sources:
-        if not calendar_source.enabled:
-            continue
-        try:
-            if calendar_source.type == "outlook":
-                result = import_outlook_ics_from_url(calendar_source.url)
-            else:
-                result = import_canvas_ics_from_url(calendar_source.url)
-            sourced_items = _with_source(result.items, f"calendar_source:{calendar_source.id}")
-            all_items.extend(sourced_items)
-            source_counts[f"calendar_source:{calendar_source.id}"] = len(sourced_items)
-        except Exception as exc:
-            warnings.append(f"{calendar_source.name} feed import failed: {exc}")
-
-    if settings.canvas_ics_url:
-        try:
-            canvas_result = import_canvas_ics_from_url(settings.canvas_ics_url)
-            all_items.extend(canvas_result.items)
-            source_counts["canvas_ics"] = len(canvas_result.items)
-        except Exception as exc:
-            warnings.append(f"Canvas feed import failed: {exc}")
-    else:
-        warnings.append("Canvas ICS feed is not configured. Set TITAN_CANVAS_ICS_URL in your environment.")
-
-    if settings.outlook_ics_url:
-        try:
-            outlook_result = import_outlook_ics_from_url(settings.outlook_ics_url)
-            all_items.extend(outlook_result.items)
-            source_counts["outlook_ics"] = len(outlook_result.items)
-        except Exception as exc:
-            warnings.append(f"Outlook ICS import failed: {exc}")
-    elif settings.outlook_calendar_email:
-        warnings.append("Outlook target account is set, but TITAN_OUTLOOK_ICS_URL is missing.")
-    else:
-        warnings.append("Outlook calendar integration is not configured yet. Set TITAN_OUTLOOK_CALENDAR_EMAIL and TITAN_OUTLOOK_ICS_URL.")
+    calendar_items, calendar_source_counts, calendar_warnings, calendar_source_names = _load_calendar_items()
+    merged_calendar_items, source_details = _merge_calendar_items(calendar_items, calendar_source_names)
+    all_items.extend(merged_calendar_items)
+    all_items.sort(key=_item_sort_key)
+    source_counts.update(calendar_source_counts)
+    warnings.extend(calendar_warnings)
 
     if weather_summary is None:
         try:
@@ -418,7 +598,7 @@ def build_sitrep_payload(
 
     filtered_items = _filter_dismissed_overdue(all_items, now, dismissed_ids)
     sitrep = build_sitrep(filtered_items, now=now, weather_summary=weather_summary, block_minutes=settings.study_block_minutes)
-    next_class = _next_class_payload(_next_class_item(all_items, now))
+    next_class = _next_class_payload_with_sources(_next_class_item(all_items, now), source_details)
     assignment_buckets = _classify_assignment_items(filtered_items, now)
     overdue_ids = {stable_item_id_for_planner_item(item) for item in assignment_buckets["overdue"]}
     top_priority_source = (
@@ -427,9 +607,21 @@ def build_sitrep_payload(
         or assignment_buckets["due_this_week"]
         or assignment_buckets["overdue"]
     )
-    top_priority_item = _serialize_item(top_priority_source[0]) if top_priority_source else None
-    upcoming_assignments = _serialized_assignments(
-        (assignment_buckets["due_tomorrow"] + assignment_buckets["due_this_week"])[:3]
+    top_priority_item = _serialize_item_with_sources(top_priority_source[0], source_details) if top_priority_source else None
+    upcoming_assignments = _serialized_assignments_with_sources(
+        (assignment_buckets["due_tomorrow"] + assignment_buckets["due_this_week"])[:3],
+        source_details,
+    )
+    saved_sources = [source for source in list_calendar_sources() if source.enabled]
+    canvas_feed_configured = (
+        any(source.type == "canvas" for source in saved_sources)
+        or any(source["type"] == "canvas" for source in settings.configured_calendar_sources())
+        or bool(settings.canvas_ics_url)
+    )
+    outlook_feed_configured = (
+        any(source.type == "outlook" for source in saved_sources)
+        or any(source["type"] == "outlook" for source in settings.configured_calendar_sources())
+        or bool(settings.outlook_ics_url)
     )
     payload = {
         "generated_at": sitrep.generated_at.isoformat(),
@@ -439,19 +631,19 @@ def build_sitrep_payload(
             "calendar_scope": "school_and_life",
             "scheduling_mode": "suggest_first",
             "outlook_calendar_email": settings.outlook_calendar_email,
-            "canvas_feed_configured": bool(settings.canvas_ics_url),
-            "outlook_feed_configured": bool(settings.outlook_ics_url),
+            "canvas_feed_configured": canvas_feed_configured,
+            "outlook_feed_configured": outlook_feed_configured,
         },
         "warnings": warnings,
         "source_counts": source_counts,
-        "today": _with_overdue_flag([_serialize_item(item) for item in sitrep.today_items], overdue_ids),
-        "must_do_today": _with_overdue_flag([_serialize_item(item) for item in sitrep.must_do_today], overdue_ids),
-        "still_open": _with_overdue_flag([_serialize_item(item) for item in sitrep.still_open[:15]], overdue_ids),
-        "overdue_assignments": _serialized_assignments(assignment_buckets["overdue"]),
-        "due_today_assignments": _serialized_assignments(assignment_buckets["due_today"]),
-        "due_tomorrow_assignments": _serialized_assignments(assignment_buckets["due_tomorrow"]),
-        "due_this_week_assignments": _serialized_assignments(assignment_buckets["due_this_week"]),
-        "future_assignments": _serialized_assignments(assignment_buckets["future"]),
+        "today": _with_overdue_flag([_serialize_item_with_sources(item, source_details) for item in sitrep.today_items], overdue_ids),
+        "must_do_today": _with_overdue_flag([_serialize_item_with_sources(item, source_details) for item in sitrep.must_do_today], overdue_ids),
+        "still_open": _with_overdue_flag([_serialize_item_with_sources(item, source_details) for item in sitrep.still_open[:15]], overdue_ids),
+        "overdue_assignments": _serialized_assignments_with_sources(assignment_buckets["overdue"], source_details),
+        "due_today_assignments": _serialized_assignments_with_sources(assignment_buckets["due_today"], source_details),
+        "due_tomorrow_assignments": _serialized_assignments_with_sources(assignment_buckets["due_tomorrow"], source_details),
+        "due_this_week_assignments": _serialized_assignments_with_sources(assignment_buckets["due_this_week"], source_details),
+        "future_assignments": _serialized_assignments_with_sources(assignment_buckets["future"], source_details),
         "top_priority_item": top_priority_item,
         "upcoming_assignments": upcoming_assignments,
         "next_class": next_class,

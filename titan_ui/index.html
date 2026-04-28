@@ -1361,7 +1361,8 @@ textarea {
       const course = item.course_name ? `Course: ${escapeHtml(item.course_name)}<br>` : '';
       const starts = item.starts_at ? `Starts: ${escapeHtml(formatDateTime(item.starts_at))}<br>` : '';
       const due = item.due_at ? `Due/Ends: ${escapeHtml(formatDateTime(item.due_at))}<br>` : '';
-      const source = item.source ? `Source: ${escapeHtml(item.source)}` : '';
+      const sourceLabel = item.calendar_name || item.source || '';
+      const source = sourceLabel ? `Source: ${escapeHtml(sourceLabel)}` : '';
       const dismissAction = item.is_overdue && item.item_id
         ? `<div class="item-actions"><button type="button" class="dismiss-item-btn" data-item-id="${escapeHtml(item.item_id)}" data-title="${escapeHtml(item.title || 'Untitled')}" data-course="${escapeHtml(item.course_name || 'No data available.')}">Dismiss</button></div>`
         : '';

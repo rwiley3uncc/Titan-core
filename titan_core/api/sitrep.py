@@ -25,6 +25,7 @@ def _serialize_item(item: PlannerItem) -> dict:
         "due_at": item.due_at.isoformat() if item.due_at else None,
         "source": item.source,
         "details": item.details,
+        "location": item.location,
         "course_name": item.course_name,
         "estimated_minutes": item.estimated_minutes,
         "priority": item.priority,
@@ -41,6 +42,7 @@ def _with_source(items: list[PlannerItem], source_name: str) -> list[PlannerItem
             due_at=item.due_at,
             source=source_name,
             details=item.details,
+            location=item.location,
             course_name=item.course_name,
             estimated_minutes=item.estimated_minutes,
             priority=item.priority,
@@ -68,6 +70,15 @@ def _spoken_when(value: str | None) -> str:
         dt = datetime.fromisoformat(value)
         time_part = dt.strftime("%I:%M %p").lstrip("0").replace(":00 ", " ")
         return f"{dt.strftime('%A')} at {time_part}"
+    except ValueError:
+        return _spoken_clean(value)
+
+
+def _spoken_time(value: str | None) -> str:
+    if not value:
+        return "No data available."
+    try:
+        return datetime.fromisoformat(value).strftime("%I:%M %p").lstrip("0").replace(":00 ", " ")
     except ValueError:
         return _spoken_clean(value)
 
@@ -141,6 +152,48 @@ def _spoken_weather(weather: str | None) -> str:
     return cleaned
 
 
+def _spoken_location(location: str | None) -> str | None:
+    cleaned = _spoken_clean(location)
+    if cleaned == "No data available.":
+        return None
+
+    match = re.match(r"^(.*?)[,\s]+([A-Za-z]?\d{2,4}[A-Za-z]?)$", cleaned)
+    if match:
+        building = _spoken_clean(match.group(1))
+        room = _spoken_clean(match.group(2))
+        if building != "No data available." and room != "No data available.":
+            return f"In {building}, room {room}."
+
+    return f"In {cleaned}."
+
+
+def _next_class_item(items: list[PlannerItem], now: datetime) -> PlannerItem | None:
+    today = now.date()
+    candidates = [
+        item
+        for item in items
+        if item.kind == "calendar_event"
+        and item.starts_at is not None
+        and item.starts_at.date() == today
+        and item.starts_at > now
+    ]
+    candidates.sort(key=lambda item: item.starts_at or datetime.max)
+    return candidates[0] if candidates else None
+
+
+def _next_class_payload(item: PlannerItem | None) -> dict | None:
+    if item is None:
+        return None
+
+    serialized = _serialize_item(item)
+    return {
+        "title": _spoken_title(serialized),
+        "course_code": _spoken_course(serialized),
+        "starts_at": serialized.get("starts_at"),
+        "location": _spoken_clean(serialized.get("location")) if serialized.get("location") else None,
+    }
+
+
 def _dedupe_items(items: list[dict]) -> list[dict]:
     unique: list[dict] = []
     seen: set[str] = set()
@@ -169,12 +222,24 @@ def _spoken_text(data: dict) -> str:
     blocks = data.get("suggested_blocks", [])
     still_open = _dedupe_items(data.get("still_open", []))
     today = _dedupe_items(data.get("today", []))
+    next_class = data.get("next_class")
     weather = _spoken_weather(data.get("weather_summary"))
     lines = [
         "Good morning.",
         "Here is your briefing.",
         f"You have {_count_phrase(len(today), 'scheduled item')} today.",
     ]
+
+    if next_class:
+        class_course = _spoken_clean(next_class.get("course_code"))
+        class_start = _spoken_time(next_class.get("starts_at"))
+        class_location = _spoken_location(next_class.get("location")) if next_class.get("location") else None
+        class_subject = class_course if class_course != "No data available." else _spoken_clean(next_class.get("title"))
+        lines.append(f"Your next class is {class_subject}, starting at {class_start}.")
+        if class_location:
+            lines.append(class_location)
+    else:
+        lines.append("No upcoming classes today.")
 
     if must_do:
         top_item = must_do[0]
@@ -268,6 +333,7 @@ def build_sitrep_payload(
             weather_summary = None
 
     sitrep = build_sitrep(all_items, now=now, weather_summary=weather_summary, block_minutes=settings.study_block_minutes)
+    next_class = _next_class_payload(_next_class_item(all_items, now))
     payload = {
         "generated_at": sitrep.generated_at.isoformat(),
         "configuration": {
@@ -284,6 +350,7 @@ def build_sitrep_payload(
         "today": [_serialize_item(item) for item in sitrep.today_items],
         "must_do_today": [_serialize_item(item) for item in sitrep.must_do_today],
         "still_open": [_serialize_item(item) for item in sitrep.still_open[:15]],
+        "next_class": next_class,
         "suggested_blocks": [
             {
                 "title": b.title,

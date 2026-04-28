@@ -1389,6 +1389,55 @@ textarea {
         : warnings.map(w => `<div class="warning">${w}</div>`).join('');
     }
 
+    function buildSitrepText(data) {
+      const today = (data.today || []).length;
+      const must = (data.must_do_today || []).length;
+      const open = (data.still_open || []).length;
+      const nextClass = data.next_class || null;
+      const topPriority = (data.must_do_today || [])[0];
+      const nextBlock = (data.suggested_blocks || [])[0];
+      const weather = data.weather_summary || 'No data available.';
+
+      const priorityTitle = topPriority && topPriority.title ? topPriority.title : 'No data available.';
+      const priorityCourse = topPriority && topPriority.course_name ? topPriority.course_name : 'No data available.';
+      const priorityDue = topPriority
+        ? (topPriority.due_at ? formatDateTime(topPriority.due_at) : (topPriority.starts_at ? formatDateTime(topPriority.starts_at) : 'No data available.'))
+        : 'No data available.';
+
+      const nextStepTitle = nextBlock && nextBlock.title ? nextBlock.title : 'No data available.';
+      const nextStepStart = nextBlock && nextBlock.starts_at ? formatDateTime(nextBlock.starts_at) : 'No data available.';
+      const nextClassCourse = nextClass && nextClass.course_code ? nextClass.course_code : 'No data available.';
+      const nextClassTitle = nextClass && nextClass.title ? nextClass.title : 'No data available.';
+      const nextClassTime = nextClass && nextClass.starts_at ? formatDateTime(nextClass.starts_at) : 'No data available.';
+      const nextClassLocation = nextClass && nextClass.location ? nextClass.location : null;
+
+      return [
+        "Good morning. Here's your briefing for today.",
+        '',
+        'Today at a glance',
+        `- ${today} scheduled item${today === 1 ? '' : 's'}`,
+        `- ${must} task${must === 1 ? '' : 's'} needing attention`,
+        `- ${open} still-open school task${open === 1 ? '' : 's'}`,
+        '',
+        'Next Class',
+        nextClass
+          ? `Course: ${nextClassCourse}\nTitle: ${nextClassTitle}\nTime: ${nextClassTime}${nextClassLocation ? `\nLocation: ${nextClassLocation}` : ''}`
+          : 'No upcoming classes today.',
+        '',
+        'Top Priority',
+        priorityTitle,
+        priorityCourse !== 'No data available.' ? `(${priorityCourse})` : priorityCourse,
+        `Due: ${priorityDue}`,
+        '',
+        'Recommended Next Step',
+        nextStepTitle,
+        `Start: ${nextStepStart}`,
+        '',
+        'Weather',
+        weather,
+      ].join('\n');
+    }
+
     async function loadSitrep() {
       updateHeaderStatus('refreshing_sitrep');
       try {

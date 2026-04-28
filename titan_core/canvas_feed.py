@@ -59,7 +59,7 @@ def parse_canvas_ics_text(text: str) -> CanvasFeedImportResult:
                 summary = current.get("SUMMARY", "Untitled item")
                 starts_at = _parse_dt(current.get("DTSTART", ""))
                 due_at = _parse_dt(current.get("DTEND", "")) or starts_at
-                items.append(PlannerItem(title=summary, kind=_kind_from_summary(summary), starts_at=starts_at, due_at=due_at, source="canvas_ics", details=current.get("DESCRIPTION", ""), course_name=_extract_course_name(summary)))
+                items.append(PlannerItem(title=summary, kind=_kind_from_summary(summary), starts_at=starts_at, due_at=due_at, source="canvas_ics", details=current.get("DESCRIPTION", ""), location=current.get("LOCATION"), course_name=_extract_course_name(summary)))
             current = {}
             in_event = False
             continue

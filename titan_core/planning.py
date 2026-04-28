@@ -16,6 +16,7 @@ class PlannerItem:
     due_at: datetime | None = None
     source: str = "unknown"
     details: str = ""
+    location: str | None = None
     course_name: str | None = None
     estimated_minutes: int | None = None
     priority: int = 0

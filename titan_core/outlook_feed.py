@@ -52,6 +52,7 @@ def parse_outlook_ics_text(text: str) -> OutlookFeedImportResult:
                         due_at=due_at,
                         source="outlook_ics",
                         details=current.get("DESCRIPTION", ""),
+                        location=current.get("LOCATION"),
                     )
                 )
             current = {}

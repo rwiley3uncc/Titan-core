@@ -80,7 +80,30 @@ def _spoken_title(item: dict) -> str:
     return title
 
 
+def _extract_course_code(text: str | None) -> str | None:
+    cleaned = _spoken_clean(text)
+    if cleaned == "No data available.":
+        return None
+
+    match = re.search(r"([A-Z]{2,5}-\d{3,5}[A-Z]?)", cleaned)
+    if match:
+        return match.group(1)
+
+    return None
+
+
 def _spoken_course(item: dict) -> str:
+    title = _spoken_clean(item.get("title"))
+    bracket_match = re.search(r"\[(.*?)\]\s*$", title)
+    if bracket_match:
+        extracted = _extract_course_code(bracket_match.group(1))
+        if extracted:
+            return extracted
+
+    extracted = _extract_course_code(item.get("course_name"))
+    if extracted:
+        return extracted
+
     return _spoken_clean(item.get("course_name"))
 
 

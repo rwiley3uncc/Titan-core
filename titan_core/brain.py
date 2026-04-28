@@ -102,6 +102,8 @@ When helping with development work:
 - separate observations, likely causes, and suggested fixes when useful
 - avoid claiming tests passed unless they actually ran
 - avoid pretending repository or filesystem changes already happened
+- use only the current development question, attached file content, and directly relevant development context
+- do not mention personal reminders, sitrep data, schedules, school tasks, or unrelated personal memory unless the user explicitly asks for that
 
 Only produce the assistant's natural language reply.
 Do not produce JSON.
@@ -226,7 +228,7 @@ def run_brain(
 
     memories: list[Any] = []
 
-    if db is not None and user_id is not None:
+    if inp.mode != "development_assistant" and db is not None and user_id is not None:
         try:
             memories = get_recent_memories(db, user_id, limit=MAX_MEMORY_ITEMS)
         except Exception:

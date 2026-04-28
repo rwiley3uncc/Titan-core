@@ -221,15 +221,42 @@ button {
 /* CHAT */
 
 #chat {
-  height: 260px;
+  min-height: 420px;
+  max-height: 520px;
   overflow-y: auto;
 
   background: #fafafa;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px;
+  padding: 12px;
 
   font-family: Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.message-row {
+  margin-bottom: 14px;
+}
+
+.message-row:last-child {
+  margin-bottom: 0;
+}
+
+.message-label {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.message-body {
+  line-height: 1.45;
+}
+
+.message-user .message-label {
+  color: #0f172a;
+}
+
+.message-titan .message-label {
+  color: #1d4ed8;
 }
 
 /* INPUT */
@@ -331,7 +358,7 @@ textarea {
       <div class="right-column">
         <div class="panel">
           <h3>Conversation</h3>
-          <div id="chat">TITAN: Online. How can I help?</div>
+          <div id="chat"></div>
           <div id="activeModeLabel" class="active-mode">Active Mode: Personal Assistant</div>
           <div class="mode-row">
             <label for="assistantMode"><strong>Assistant Mode</strong></label>
@@ -373,14 +400,30 @@ textarea {
 
     function createChat() {
       currentChatId = 'chat_' + Date.now();
-      document.getElementById('chat').textContent = 'TITAN: Online. How can I help?';
+      const chat = document.getElementById('chat');
+      chat.innerHTML = '';
+      appendChatMessage('titan', 'Online. How can I help?');
       document.getElementById('actions').textContent = '(none)';
       document.getElementById('msg').value = '';
     }
 
-    function appendChatLine(text) {
+    function appendChatMessage(sender, text) {
       const chat = document.getElementById('chat');
-      chat.textContent += '\n' + text;
+
+      const row = document.createElement('div');
+      row.className = 'message-row ' + (sender === 'user' ? 'message-user' : 'message-titan');
+
+      const label = document.createElement('div');
+      label.className = 'message-label';
+      label.textContent = sender === 'user' ? 'YOU:' : 'TITAN:';
+
+      const body = document.createElement('div');
+      body.className = 'message-body';
+      body.textContent = text;
+
+      row.appendChild(label);
+      row.appendChild(body);
+      chat.appendChild(row);
       chat.scrollTop = chat.scrollHeight;
     }
 
@@ -617,7 +660,7 @@ textarea {
       if (!text) return;
 
       ensureChat();
-      appendChatLine('YOU: ' + text);
+      appendChatMessage('user', text);
       input.value = '';
 
       try {
@@ -629,17 +672,17 @@ textarea {
         });
 
         if (!response.ok) {
-          appendChatLine('TITAN: Backend error: ' + response.status);
+          appendChatMessage('titan', 'Backend error: ' + response.status);
           renderActions([]);
           return;
         }
 
         const data = await response.json();
-        appendChatLine('TITAN: ' + (data.reply || 'No reply returned.'));
+        appendChatMessage('titan', data.reply || 'No reply returned.');
         renderActions(data.proposed_actions || []);
       } catch (error) {
         console.error(error);
-        appendChatLine('TITAN: Error contacting backend.');
+        appendChatMessage('titan', 'Error contacting backend.');
         renderActions([]);
       }
     }
@@ -653,15 +696,15 @@ textarea {
         });
 
         if (!response.ok) {
-          appendChatLine('TITAN: Execute failed: ' + response.status);
+          appendChatMessage('titan', 'Execute failed: ' + response.status);
           return;
         }
 
         const result = await response.json();
-        appendChatLine('TITAN: ' + (result.message || 'Action finished.'));
+        appendChatMessage('titan', result.message || 'Action finished.');
       } catch (error) {
         console.error(error);
-        appendChatLine('TITAN: Failed to execute action.');
+        appendChatMessage('titan', 'Failed to execute action.');
       }
     }
 
@@ -685,6 +728,7 @@ textarea {
 
     window.addEventListener('load', async function() {
       ensureChat();
+      createChat();
       restoreModeSelection();
       updateModeHint();
       await loadSitrep();

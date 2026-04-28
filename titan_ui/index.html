@@ -390,6 +390,7 @@ textarea {
     let latestSitrepPayload = null;
     let recognition = null;
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
+    const INITIAL_TITAN_GREETING = 'Online. How can I help?';
 
     function ensureChat() {
       if (!currentChatId) {
@@ -402,20 +403,21 @@ textarea {
       currentChatId = 'chat_' + Date.now();
       const chat = document.getElementById('chat');
       chat.innerHTML = '';
-      appendChatMessage('titan', 'Online. How can I help?');
+      appendChatMessage('TITAN', INITIAL_TITAN_GREETING);
       document.getElementById('actions').textContent = '(none)';
       document.getElementById('msg').value = '';
     }
 
     function appendChatMessage(sender, text) {
       const chat = document.getElementById('chat');
+      const normalizedSender = String(sender || '').trim().toUpperCase() === 'YOU' ? 'YOU' : 'TITAN';
 
       const row = document.createElement('div');
-      row.className = 'message-row ' + (sender === 'user' ? 'message-user' : 'message-titan');
+      row.className = 'message-row ' + (normalizedSender === 'YOU' ? 'message-user' : 'message-titan');
 
       const label = document.createElement('div');
       label.className = 'message-label';
-      label.textContent = sender === 'user' ? 'YOU:' : 'TITAN:';
+      label.textContent = normalizedSender + ':';
 
       const body = document.createElement('div');
       body.className = 'message-body';
@@ -660,7 +662,7 @@ textarea {
       if (!text) return;
 
       ensureChat();
-      appendChatMessage('user', text);
+      appendChatMessage('YOU', text);
       input.value = '';
 
       try {
@@ -672,17 +674,17 @@ textarea {
         });
 
         if (!response.ok) {
-          appendChatMessage('titan', 'Backend error: ' + response.status);
+          appendChatMessage('TITAN', 'Backend error: ' + response.status);
           renderActions([]);
           return;
         }
 
         const data = await response.json();
-        appendChatMessage('titan', data.reply || 'No reply returned.');
+        appendChatMessage('TITAN', data.reply || 'No reply returned.');
         renderActions(data.proposed_actions || []);
       } catch (error) {
         console.error(error);
-        appendChatMessage('titan', 'Error contacting backend.');
+        appendChatMessage('TITAN', 'Error contacting backend.');
         renderActions([]);
       }
     }
@@ -696,15 +698,15 @@ textarea {
         });
 
         if (!response.ok) {
-          appendChatMessage('titan', 'Execute failed: ' + response.status);
+          appendChatMessage('TITAN', 'Execute failed: ' + response.status);
           return;
         }
 
         const result = await response.json();
-        appendChatMessage('titan', result.message || 'Action finished.');
+        appendChatMessage('TITAN', result.message || 'Action finished.');
       } catch (error) {
         console.error(error);
-        appendChatMessage('titan', 'Failed to execute action.');
+        appendChatMessage('TITAN', 'Failed to execute action.');
       }
     }
 

@@ -171,8 +171,24 @@ def _action(action_type: str, label: str, **args) -> ProposedAction:
     return ProposedAction(type=action_type, label=label, args=args)
 
 
+TODAY_TOKENS = {"today", "toda", "tody", "todays"}
+SCHEDULE_TOKENS = {"schedule", "calendar", "agenda"}
+PRIORITY_TOKENS = {"priority", "priorities", "important", "focus", "attention"}
+TASK_TOKENS = {"task", "tasks", "must", "need", "due"}
+
+
+def has_token(tokens: set[str], *options: str) -> bool:
+    return any(option in tokens for option in options)
+
+
+def has_today_reference(normalized: str, tokens: set[str]) -> bool:
+    return bool(TODAY_TOKENS & tokens) or "today's" in normalized
+
+
 def detect_personal_intent(text: str) -> str | None:
     normalized = normalize_text(text)
+    tokens = tokenize(normalized)
+    has_today = has_today_reference(normalized, tokens)
 
     if any(phrase in normalized for phrase in ("refresh my sitrep", "refresh sitrep", "reload sitrep", "update sitrep")):
         return "refresh_sitrep"
@@ -182,15 +198,63 @@ def detect_personal_intent(text: str) -> str | None:
         return "study_next"
     if any(phrase in normalized for phrase in ("show my open tasks", "show open tasks", "what is still open", "what's still open", "still open", "open tasks")):
         return "still_open"
-    if any(phrase in normalized for phrase in ("summarize my must-do tasks", "summarize my must do tasks", "must-do tasks", "must do tasks", "what must i do today")):
+    if any(phrase in normalized for phrase in (
+        "summarize my must-do tasks",
+        "summarize my must do tasks",
+        "must-do tasks",
+        "must do tasks",
+        "what must i do today",
+        "due today",
+    )):
         return "must_do_today"
+    if has_today and (
+        "what needs attention" in normalized
+        or "what is important" in normalized
+        or "what's important" in normalized
+        or "priorities today" in normalized
+        or "what should i focus on" in normalized
+        or "what should i focus on today" in normalized
+        or "on the table today" in normalized
+    ):
+        return "daily_plan"
+    if has_today and (PRIORITY_TOKENS & tokens) and ("what" in tokens or "whats" in tokens or "what's" in normalized):
+        return "daily_plan"
     if any(phrase in normalized for phrase in ("make me a study plan", "make me a daily plan", "build me a study plan", "build a study plan", "daily plan", "plan my day")):
         return "daily_plan"
     if any(phrase in normalized for phrase in ("next deadline", "what is my next deadline", "what's my next deadline")):
         return "next_deadline"
-    if any(phrase in normalized for phrase in ("what do i need to do today", "what should i do today", "what is on today's schedule", "what's on today's schedule", "what is on todays schedule", "what's on todays schedule")):
+    if any(phrase in normalized for phrase in (
+        "what do i need to do today",
+        "what should i do today",
+        "what is on today's schedule",
+        "what's on today's schedule",
+        "what is on todays schedule",
+        "what's on todays schedule",
+        "what is on today",
+        "what's on today",
+        "whats on today",
+        "what do i have today",
+    )):
         return "daily_overview"
-    if "schedule" in normalized and "today" in normalized:
+    if has_today and (
+        has_token(tokens, *SCHEDULE_TOKENS)
+        or "on the schedule" in normalized
+        or "today schedule" in normalized
+        or "todays schedule" in normalized
+        or "calendar today" in normalized
+        or "agenda today" in normalized
+        or "due today" in normalized
+    ):
+        return "schedule_today"
+    if has_today and "schedule" in tokens:
+        return "schedule_today"
+    if has_today and ("on the table today" in normalized or ("have" in tokens and "what" in tokens)):
+        return "daily_overview"
+    if has_today and has_token(tokens, *TASK_TOKENS) and ("what" in tokens or "whats" in tokens or "what's" in normalized):
+        return "daily_plan"
+    if has_today and "good morning" in normalized and ("table" in tokens or has_token(tokens, *SCHEDULE_TOKENS, *PRIORITY_TOKENS)):
+        return "daily_overview"
+    if "what is on the schedule" in normalized or "whats on the schedule" in normalized or "what's on the schedule" in normalized:
         return "schedule_today"
 
     return None
@@ -443,7 +507,7 @@ def personal_unknown_response(text: str) -> ChatResponse:
     normalized = normalize_text(text)
     if any(word in normalized for word in ("canvas", "assignment", "deadline", "class", "schedule", "study", "task")):
         return ChatResponse(
-            reply=f"{GROUNDING_FALLBACK} I would need current sitrep/dashboard data from the configured Canvas or Outlook feeds to answer that.",
+            reply=f"{GROUNDING_FALLBACK} I would need current sitrep/dashboard data to answer that.",
             proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
         )
     if any(word in normalized for word in ("email", "inbox", "mail")):

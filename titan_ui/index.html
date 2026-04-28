@@ -362,6 +362,7 @@ textarea {
     let currentChatId = null;
     let latestSitrepPayload = null;
     let recognition = null;
+    const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
 
     function ensureChat() {
       if (!currentChatId) {
@@ -385,6 +386,20 @@ textarea {
 
     function currentMode() {
       return document.getElementById('assistantMode').value || 'personal_general';
+    }
+
+    function saveModeSelection() {
+      localStorage.setItem(ASSISTANT_MODE_STORAGE_KEY, currentMode());
+    }
+
+    function restoreModeSelection() {
+      const savedMode = localStorage.getItem(ASSISTANT_MODE_STORAGE_KEY) || 'personal_general';
+      const modeSelect = document.getElementById('assistantMode');
+
+      if (!modeSelect) return;
+
+      const hasSavedOption = Array.from(modeSelect.options).some(option => option.value === savedMode);
+      modeSelect.value = hasSavedOption ? savedMode : 'personal_general';
     }
 
     function updateModeHint() {
@@ -652,7 +667,10 @@ textarea {
 
     document.getElementById('sendBtn').addEventListener('click', sendMsg);
     document.getElementById('newChatBtn').addEventListener('click', createChat);
-    document.getElementById('assistantMode').addEventListener('change', updateModeHint);
+    document.getElementById('assistantMode').addEventListener('change', () => {
+      saveModeSelection();
+      updateModeHint();
+    });
     document.getElementById('refreshSitrepBtn').addEventListener('click', loadSitrep);
     document.getElementById('speakSitrepBtn').addEventListener('click', speakSitrep);
     document.getElementById('stopVoiceBtn').addEventListener('click', stopVoice);
@@ -667,6 +685,7 @@ textarea {
 
     window.addEventListener('load', async function() {
       ensureChat();
+      restoreModeSelection();
       updateModeHint();
       await loadSitrep();
 

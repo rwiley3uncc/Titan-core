@@ -598,34 +598,11 @@ textarea {
             </div>
             <div id="devFileName" class="dev-upload-meta">No file selected.</div>
           </div>
-          <div class="voice-settings">
-            <div class="voice-settings-title">Read-Aloud Voice</div>
-            <div class="voice-settings-grid">
-              <div class="voice-control">
-                <label for="voiceSelect">Voice</label>
-                <select id="voiceSelect"></select>
-              </div>
-              <div class="voice-control">
-                <label for="voiceRate">Rate</label>
-                <input id="voiceRate" type="range" min="0.7" max="1.2" step="0.05" value="0.95" />
-                <div id="voiceRateValue" class="voice-control-value">0.95</div>
-              </div>
-              <div class="voice-control">
-                <label for="voicePitch">Pitch</label>
-                <input id="voicePitch" type="range" min="0.8" max="1.2" step="0.05" value="1.0" />
-                <div id="voicePitchValue" class="voice-control-value">1.00</div>
-              </div>
-              <div class="voice-control">
-                <label for="voiceVolume">Volume</label>
-                <input id="voiceVolume" type="range" min="0.2" max="1.0" step="0.05" value="1.0" />
-                <div id="voiceVolumeValue" class="voice-control-value">1.00</div>
-              </div>
-            </div>
-          </div>
           <div class="button-row" style="margin-top:10px;">
             <button id="sendBtn" type="button">Send</button>
             <button id="newChatBtn" type="button">New Chat</button>
             <button id="openActionsBtn" type="button">Proposed Actions</button>
+            <button id="openSettingsBtn" type="button">⚙ Settings</button>
           </div>
         </div>
       </div>
@@ -644,6 +621,56 @@ textarea {
       </div>
       <div class="modal-footer">
         <button id="closeActionsBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+      <div class="modal-header">
+        <h3 id="settingsModalTitle" class="modal-title">Titan Settings</h3>
+      </div>
+      <div class="modal-body">
+        <div class="voice-settings" style="margin-top:0;">
+          <div class="voice-settings-title">Calendar Sources</div>
+          <div class="voice-control-value">No calendar sources configured.</div>
+        </div>
+        <div class="voice-settings">
+          <div class="voice-settings-title">Caregiver Access</div>
+          <div class="voice-control-value">No caregiver access configured.</div>
+        </div>
+        <div class="voice-settings">
+          <div class="voice-settings-title">Voice Settings</div>
+          <div class="voice-settings-grid">
+            <div class="voice-control">
+              <label for="voiceSelect">Voice</label>
+              <select id="voiceSelect"></select>
+            </div>
+            <div class="voice-control">
+              <label for="voiceRate">Rate</label>
+              <input id="voiceRate" type="range" min="0.7" max="1.2" step="0.05" value="0.95" />
+              <div id="voiceRateValue" class="voice-control-value">0.95</div>
+            </div>
+            <div class="voice-control">
+              <label for="voicePitch">Pitch</label>
+              <input id="voicePitch" type="range" min="0.8" max="1.2" step="0.05" value="1.0" />
+              <div id="voicePitchValue" class="voice-control-value">1.00</div>
+            </div>
+            <div class="voice-control">
+              <label for="voiceVolume">Volume</label>
+              <input id="voiceVolume" type="range" min="0.2" max="1.0" step="0.05" value="1.0" />
+              <div id="voiceVolumeValue" class="voice-control-value">1.00</div>
+            </div>
+          </div>
+        </div>
+        <div class="voice-settings">
+          <div class="voice-settings-title">Privacy &amp; Grounding</div>
+          <div class="voice-control-value">Titan only answers using verified data.</div>
+          <div class="voice-control-value">Titan does not guess.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="closeSettingsBtn" type="button">Close</button>
       </div>
     </div>
   </div>
@@ -1184,6 +1211,18 @@ textarea {
       modal.setAttribute('aria-hidden', 'true');
     }
 
+    function openSettingsModal() {
+      const modal = document.getElementById('settingsModal');
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeSettingsModal() {
+      const modal = document.getElementById('settingsModal');
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
     function renderActions(actions) {
       const el = document.getElementById('actions');
       currentProposedActions = Array.isArray(actions) ? actions : [];
@@ -1320,6 +1359,8 @@ textarea {
     document.getElementById('newChatBtn').addEventListener('click', createChat);
     document.getElementById('openActionsBtn').addEventListener('click', openActionsModal);
     document.getElementById('closeActionsBtn').addEventListener('click', closeActionsModal);
+    document.getElementById('openSettingsBtn').addEventListener('click', openSettingsModal);
+    document.getElementById('closeSettingsBtn').addEventListener('click', closeSettingsModal);
     document.getElementById('devFileInput').addEventListener('change', handleDevFileSelection);
     document.getElementById('clearDevFileBtn').addEventListener('click', clearDevFile);
     document.getElementById('assistantMode').addEventListener('change', () => {
@@ -1348,9 +1389,16 @@ textarea {
       }
     });
 
+    document.getElementById('settingsModal').addEventListener('click', e => {
+      if (e.target.id === 'settingsModal') {
+        closeSettingsModal();
+      }
+    });
+
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
         closeActionsModal();
+        closeSettingsModal();
       }
     });
 

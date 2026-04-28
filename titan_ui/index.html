@@ -270,6 +270,38 @@ textarea {
   border: 1px solid var(--border);
 }
 
+.dev-upload {
+  display: none;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.dev-upload.visible {
+  display: block;
+}
+
+.dev-upload-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.dev-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dev-upload-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
 /* ACTIONS */
 
 #actions {
@@ -442,6 +474,18 @@ textarea {
             <div id="modeHint" class="mode-hint">Personal Assistant: planning, reminders, drafting, sitreps.<br>Development Assistant: code help, debugging, file guidance, safe changes.</div>
           </div>
           <textarea id="msg" rows="3" placeholder="Type a message or use Voice Input..."></textarea>
+          <div id="devUploadSection" class="dev-upload">
+            <div class="dev-upload-title">Development File Review</div>
+            <div class="dev-upload-row">
+              <input
+                id="devFileInput"
+                type="file"
+                accept=".py,.js,.ts,.html,.css,.json,.md,.txt,.gd,.tscn,.yml,.yaml"
+              />
+              <button id="clearDevFileBtn" type="button">Clear File</button>
+            </div>
+            <div id="devFileName" class="dev-upload-meta">No file selected.</div>
+          </div>
           <div class="button-row" style="margin-top:10px;">
             <button id="sendBtn" type="button">Send</button>
             <button id="newChatBtn" type="button">New Chat</button>
@@ -473,8 +517,11 @@ textarea {
     let latestSitrepPayload = null;
     let recognition = null;
     let currentProposedActions = [];
+    let selectedDevFile = null;
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
     const INITIAL_TITAN_GREETING = 'Online. How can I help?';
+    const MAX_DEV_FILE_CHARS = 120000;
+    const ALLOWED_DEV_FILE_EXTENSIONS = ['.py', '.js', '.ts', '.html', '.css', '.json', '.md', '.txt', '.gd', '.tscn', '.yml', '.yaml'];
 
     function ensureChat() {
       if (!currentChatId) {
@@ -491,6 +538,7 @@ textarea {
       currentProposedActions = [];
       renderActions([]);
       document.getElementById('msg').value = '';
+      clearDevFile();
     }
 
     function appendChatMessage(sender, text) {
@@ -565,6 +613,7 @@ textarea {
     function updateModeHint() {
       const hint = document.getElementById('modeHint');
       const label = document.getElementById('activeModeLabel');
+      const devUploadSection = document.getElementById('devUploadSection');
       if (!hint) return;
 
       const isDevMode = currentMode() === 'development_assistant';
@@ -576,6 +625,68 @@ textarea {
       }
 
       hint.innerHTML = 'Personal Assistant: planning, reminders, drafting, sitreps.<br>Development Assistant: code help, debugging, file guidance, safe changes.';
+
+      if (devUploadSection) {
+        devUploadSection.classList.toggle('visible', isDevMode);
+      }
+    }
+
+    function updateDevFileName() {
+      const target = document.getElementById('devFileName');
+      if (!target) return;
+
+      if (!selectedDevFile) {
+        target.textContent = 'No file selected.';
+        return;
+      }
+
+      const suffix = selectedDevFile.truncated ? ' Preview truncated for safety.' : '';
+      target.textContent = `${selectedDevFile.name} loaded for review.${suffix}`;
+    }
+
+    function clearDevFile() {
+      selectedDevFile = null;
+      const input = document.getElementById('devFileInput');
+      if (input) {
+        input.value = '';
+      }
+      updateDevFileName();
+    }
+
+    async function handleDevFileSelection(event) {
+      const file = event.target.files && event.target.files[0];
+
+      if (!file) {
+        clearDevFile();
+        return;
+      }
+
+      const lowerName = file.name.toLowerCase();
+      const allowed = ALLOWED_DEV_FILE_EXTENSIONS.some(ext => lowerName.endsWith(ext));
+      if (!allowed) {
+        clearDevFile();
+        appendChatMessage('TITAN', 'That file type is not supported for Development Assistant review.');
+        return;
+      }
+
+      try {
+        let content = await file.text();
+        const truncated = content.length > MAX_DEV_FILE_CHARS;
+        if (truncated) {
+          content = content.slice(0, MAX_DEV_FILE_CHARS);
+        }
+
+        selectedDevFile = {
+          name: file.name,
+          content,
+          truncated,
+        };
+        updateDevFileName();
+      } catch (error) {
+        console.error(error);
+        clearDevFile();
+        appendChatMessage('TITAN', "I couldn't read that file as text. Please choose a text-based source file.");
+      }
     }
 
     function formatDateTime(value) {
@@ -805,7 +916,12 @@ textarea {
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, mode })
+          body: JSON.stringify({
+            message: text,
+            mode,
+            file_name: selectedDevFile ? selectedDevFile.name : null,
+            file_content: selectedDevFile ? selectedDevFile.content : null,
+          })
         });
 
         if (!response.ok) {
@@ -871,6 +987,8 @@ textarea {
     document.getElementById('newChatBtn').addEventListener('click', createChat);
     document.getElementById('openActionsBtn').addEventListener('click', openActionsModal);
     document.getElementById('closeActionsBtn').addEventListener('click', closeActionsModal);
+    document.getElementById('devFileInput').addEventListener('change', handleDevFileSelection);
+    document.getElementById('clearDevFileBtn').addEventListener('click', clearDevFile);
     document.getElementById('assistantMode').addEventListener('change', () => {
       saveModeSelection();
       updateModeHint();

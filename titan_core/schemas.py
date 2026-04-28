@@ -32,6 +32,8 @@ class BrainOutput(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     mode: Optional[str] = "personal_general"
+    file_name: Optional[str] = None
+    file_content: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

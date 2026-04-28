@@ -32,17 +32,32 @@ def _serialize_item(item: PlannerItem) -> dict:
 def _spoken_text(data: dict) -> str:
     must_do = data.get("must_do_today", [])
     blocks = data.get("suggested_blocks", [])
+    still_open = data.get("still_open", [])
     today = data.get("today", [])
     weather = data.get("weather_summary")
-    lines = ["Morning sitrep."]
-    if weather:
-        lines.append(weather)
-    lines.append(f"You have {len(today)} scheduled items today.")
-    lines.append(f"You have {len(must_do)} must-do items today.")
+    lines = [
+        "Good morning. Here's your briefing for today.",
+        f"Today at a glance: {len(today)} scheduled items, {len(must_do)} tasks needing attention, and {len(still_open)} still-open school tasks.",
+    ]
+
     if must_do:
-        lines.append(f"Top must do: {must_do[0].get('title', 'unnamed task')}.")
+        top_item = must_do[0]
+        title = top_item.get("title") or "No data available."
+        course = top_item.get("course_name") or "No data available."
+        due = top_item.get("due_at") or top_item.get("starts_at") or "No data available."
+        lines.append(f"Top priority: {title}. Course: {course}. Due: {due}.")
+    else:
+        lines.append("Top priority: No data available.")
+
     if blocks:
-        lines.append(f"Suggested next study block: {blocks[0].get('title', 'study block')} at {blocks[0].get('starts_at', '')}.")
+        block = blocks[0]
+        title = block.get("title") or "No data available."
+        start = block.get("starts_at") or "No data available."
+        lines.append(f"Recommended next step: {title}. Start: {start}.")
+    else:
+        lines.append("Recommended next step: No data available.")
+
+    lines.append(f"Weather: {weather or 'No data available.'}")
     return " ".join(lines)
 
 

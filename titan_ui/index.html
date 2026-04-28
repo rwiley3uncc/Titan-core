@@ -218,6 +218,11 @@ button {
   color: var(--muted);
 }
 
+.sitrep-text {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
 /* CHAT */
 
 #chat {
@@ -721,18 +726,38 @@ textarea {
       const today = (data.today || []).length;
       const must = (data.must_do_today || []).length;
       const open = (data.still_open || []).length;
-      const blocks = (data.suggested_blocks || []).length;
-      const firstMust = must ? data.must_do_today[0].title : 'No urgent must-do item right now.';
-      const firstBlock = blocks ? data.suggested_blocks[0].title : 'No suggested study block yet.';
+      const topPriority = (data.must_do_today || [])[0];
+      const nextBlock = (data.suggested_blocks || [])[0];
+      const weather = data.weather_summary || 'No data available.';
+
+      const priorityTitle = topPriority && topPriority.title ? topPriority.title : 'No data available.';
+      const priorityCourse = topPriority && topPriority.course_name ? topPriority.course_name : 'No data available.';
+      const priorityDue = topPriority
+        ? (topPriority.due_at ? formatDateTime(topPriority.due_at) : (topPriority.starts_at ? formatDateTime(topPriority.starts_at) : 'No data available.'))
+        : 'No data available.';
+
+      const nextStepTitle = nextBlock && nextBlock.title ? nextBlock.title : 'No data available.';
+      const nextStepStart = nextBlock && nextBlock.starts_at ? formatDateTime(nextBlock.starts_at) : 'No data available.';
 
       return [
-        'Morning Sitrep',
+        "Good morning. Here's your briefing for today.",
         '',
-        `Today has ${today} scheduled item${today === 1 ? '' : 's'}.`,
-        `You have ${must} item${must === 1 ? '' : 's'} that need attention today.`,
-        `There are ${open} still-open school task${open === 1 ? '' : 's'}.`,
-        `Top must-do: ${firstMust}`,
-        `Suggested next block: ${firstBlock}`
+        '📅 Today at a glance',
+        `• ${today} scheduled item${today === 1 ? '' : 's'}`,
+        `• ${must} task${must === 1 ? '' : 's'} needing attention`,
+        `• ${open} still-open school task${open === 1 ? '' : 's'}`,
+        '',
+        '🔥 Top Priority',
+        priorityTitle,
+        priorityCourse !== 'No data available.' ? `(${priorityCourse})` : priorityCourse,
+        `Due: ${priorityDue}`,
+        '',
+        '📖 Recommended Next Step',
+        nextStepTitle,
+        `Start: ${nextStepStart}`,
+        '',
+        '🌤 Weather',
+        weather,
       ].join('\n');
     }
 
@@ -757,9 +782,7 @@ textarea {
 
         document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleString();
         document.getElementById('sitrepText').textContent = buildSitrepText(data);
-        document.getElementById('weatherLine').textContent = data.weather_summary
-          ? ('Weather: ' + data.weather_summary)
-          : 'Weather: unavailable';
+        document.getElementById('weatherLine').textContent = '';
 
         renderWarnings(data.warnings || []);
         renderList('todayList', data.today || [], itemCard);

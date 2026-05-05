@@ -9,12 +9,16 @@ Purpose:
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime, timedelta
 from typing import Iterable
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from titan_core.action_log import log_action, make_action_log_entry
+from titan_core.agent import AgentAction, plan_agent_action, validate_agent_action
 from titan_core.brain import run_brain
 from titan_core.api.sitrep import build_sitrep_payload
 from titan_core.config import settings
@@ -418,6 +422,61 @@ def task_command_response(clean_text: str, now: datetime) -> ChatResponse | None
 
 def _action(action_type: str, label: str, **args) -> ProposedAction:
     return ProposedAction(type=action_type, label=label, args=args)
+
+
+def _agent_action_to_proposed_action(action: AgentAction) -> ProposedAction:
+    """
+    Map the first-pass safe agent action into the existing UI action shape.
+
+    This preserves the current proposed action contract while keeping the
+    agent layer proposal-only. Execution remains allow-listed and user-approved.
+    """
+    args = dict(action.payload)
+    args["implemented"] = True
+    args["requires_approval"] = action.requires_approval
+    return ProposedAction(
+        type=action.name,
+        label=action.description,
+        action_id=action.action_id,
+        created_at=action.created_at,
+        status=action.status,
+        args=args,
+    )
+
+
+def _ensure_action_metadata(proposed: ProposedAction) -> ProposedAction:
+    proposed.action_id = proposed.action_id or str(uuid4())
+    proposed.created_at = proposed.created_at if proposed.created_at is not None else time.time()
+    proposed.status = proposed.status or "pending"
+    return proposed
+
+
+def _finalize_chat_response(user_message: str, response: ChatResponse) -> ChatResponse:
+    """
+    Log proposed actions as pending review while preserving the existing
+    response contract for the UI.
+    """
+    for proposed in response.proposed_actions:
+        _ensure_action_metadata(proposed)
+        metadata = dict(proposed.args or {})
+        if metadata.get("log_timestamp"):
+            continue
+        entry = make_action_log_entry(
+            action_id=proposed.action_id or "",
+            user_message=user_message,
+            action_name=proposed.type,
+            status="pending",
+            payload=metadata,
+            approved=False,
+            executed=False,
+            result="proposed",
+        )
+        metadata["log_timestamp"] = entry.timestamp
+        metadata["log_user_message"] = user_message
+        proposed.args = metadata
+        proposed.status = "pending"
+        log_action(entry)
+    return response
 
 
 def sanitize_uploaded_file(req: ChatRequest) -> tuple[str | None, str | None, str | None]:
@@ -826,38 +885,51 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     clean_text = req.message.strip()
     mode = safe_mode(req)
     now = datetime.now()
+    planned_agent_action = plan_agent_action(clean_text)
     file_name, file_content, file_error = sanitize_uploaded_file(req)
     if not clean_text:
-        return ChatResponse(reply="Please enter a message.", proposed_actions=[])
+        return _finalize_chat_response(clean_text, ChatResponse(reply="Please enter a message.", proposed_actions=[]))
     if file_error:
-        return ChatResponse(reply=file_error, proposed_actions=[])
+        return _finalize_chat_response(clean_text, ChatResponse(reply=file_error, proposed_actions=[]))
     if is_personal_assistant_mode(mode):
         task_response = task_command_response(clean_text, now)
         if task_response is not None:
-            return task_response
+            return _finalize_chat_response(clean_text, task_response)
     if should_use_personal_memory(mode) and is_memory_save_request(clean_text):
         memory_content = extract_memory_content(clean_text)
         if not memory_content:
-            return ChatResponse(reply="Tell me what you want me to remember.", proposed_actions=[])
+            return _finalize_chat_response(clean_text, ChatResponse(reply="Tell me what you want me to remember.", proposed_actions=[]))
         duplicate = find_duplicate_memory(db=db, user_id=user.id, tag="user", content=memory_content)
         if duplicate:
-            return ChatResponse(reply=f"I already had that in memory: {duplicate.content}", proposed_actions=[])
+            return _finalize_chat_response(clean_text, ChatResponse(reply=f"I already had that in memory: {duplicate.content}", proposed_actions=[]))
         memory = create_memory(db=db, user_id=user.id, tag="user", content=memory_content, score=max(2, memory_importance_score(memory_content)))
-        return ChatResponse(reply=f"Got it. I'll remember that: {memory.content}", proposed_actions=[])
+        return _finalize_chat_response(clean_text, ChatResponse(reply=f"Got it. I'll remember that: {memory.content}", proposed_actions=[]))
     if should_use_personal_memory(mode) and (should_auto_remember(clean_text) or memory_importance_score(clean_text) >= 2):
         duplicate = find_duplicate_memory(db=db, user_id=user.id, tag="user", content=clean_text)
         if duplicate:
-            return ChatResponse(reply=f"I already had that in memory: {duplicate.content}", proposed_actions=[])
+            return _finalize_chat_response(clean_text, ChatResponse(reply=f"I already had that in memory: {duplicate.content}", proposed_actions=[]))
         memory = create_memory(db=db, user_id=user.id, tag="user", content=clean_text, score=memory_importance_score(clean_text))
-        return ChatResponse(reply=f"Got it. I'll keep that in mind: {memory.content}", proposed_actions=[])
+        return _finalize_chat_response(clean_text, ChatResponse(reply=f"Got it. I'll keep that in mind: {memory.content}", proposed_actions=[]))
     memory_match = find_memory_match(db, user.id, clean_text) if should_use_personal_memory(mode) else None
     if memory_match:
-        return ChatResponse(reply=answer_from_memory(clean_text, memory_match), proposed_actions=[])
+        return _finalize_chat_response(clean_text, ChatResponse(reply=answer_from_memory(clean_text, memory_match), proposed_actions=[]))
     if is_personal_assistant_mode(mode):
         intent = detect_personal_intent(clean_text)
         if intent:
             payload = build_sitrep_payload(weather_summary="")
-            return personal_assistant_response(intent, payload)
+            return _finalize_chat_response(clean_text, personal_assistant_response(intent, payload))
+    if validate_agent_action(planned_agent_action):
+        proposed_action = _agent_action_to_proposed_action(planned_agent_action)
+        if planned_agent_action.name == "open_vscode":
+            return _finalize_chat_response(clean_text, ChatResponse(
+                reply="I can open VS Code. Approve the proposed action when you're ready.",
+                proposed_actions=[proposed_action],
+            ))
+        if planned_agent_action.name == "open_edge":
+            return _finalize_chat_response(clean_text, ChatResponse(
+                reply="I can open Microsoft Edge. Approve the proposed action when you're ready.",
+                proposed_actions=[proposed_action],
+            ))
     actions = propose_actions(clean_text)
     if actions:
         top_action = actions[0]
@@ -870,9 +942,28 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             reply = f"I can open {top_action.get('app', 'that app')}."
         else:
             reply = "I can perform that action."
-        return ChatResponse(reply=reply, proposed_actions=actions)
+        response = ChatResponse(
+            reply=reply,
+            proposed_actions=[
+                ProposedAction(
+                    type=action.get("type", "action"),
+                    app=action.get("app"),
+                    label=action.get("label") or action.get("app") or action.get("type", "action"),
+                    args={
+                        **(action.get("args", {}) if isinstance(action.get("args", {}), dict) else {}),
+                        **{
+                            key: value
+                            for key, value in action.items()
+                            if key not in {"type", "app", "label", "args"}
+                        },
+                    },
+                )
+                for action in actions
+            ],
+        )
+        return _finalize_chat_response(clean_text, response)
     if is_personal_assistant_mode(mode):
-        return personal_unknown_response(clean_text)
+        return _finalize_chat_response(clean_text, personal_unknown_response(clean_text))
     dev_req = ChatRequest(
         message=req.message,
         mode=mode,
@@ -880,11 +971,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         file_content=file_content,
     )
     if is_development_assistant_mode(mode) and asks_for_dev_review(clean_text) and not file_content:
-        return development_missing_context_response()
+        return _finalize_chat_response(clean_text, development_missing_context_response())
     out = run_brain(build_brain_input(db, user, dev_req, clean_text), db=db, user_id=user.id)
     if is_development_assistant_mode(mode) and file_name and file_name not in out.reply:
         out.reply = f"Reviewing `{file_name}`.\n\n{out.reply}"
-    return ChatResponse(reply=out.reply, proposed_actions=out.proposed_actions)
+    return _finalize_chat_response(clean_text, ChatResponse(reply=out.reply, proposed_actions=out.proposed_actions))
 
 
 @router.get("/tasks", response_model=list[TaskRecord])

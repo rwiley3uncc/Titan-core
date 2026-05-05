@@ -490,22 +490,110 @@ textarea {
   color: var(--muted);
 }
 
-.action-line {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #e5e7eb;
+.action-card {
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  padding: 14px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+  margin-bottom: 12px;
 }
 
-.action-line:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+.action-card:last-child {
+  margin-bottom: 0;
+}
+
+.action-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.action-card-title {
+  font-weight: 700;
+  color: var(--header);
+}
+
+.action-card.is-pending {
+  border-color: #cbd5e1;
+}
+
+.action-card.is-approved {
+  border-color: #93c5fd;
+}
+
+.action-card.is-executed {
+  border-color: #86efac;
+}
+
+.action-card.is-cancelled {
+  border-color: #f5c2c7;
+  background: #fff7f7;
+}
+
+.action-card.is-failed {
+  border-color: #fca5a5;
+  background: #fff7f7;
+}
+
+.action-risk {
+  font-size: 12px;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  padding: 3px 8px;
+  border-radius: 999px;
 }
 
 .action-text {
   line-height: 1.45;
+  color: #334155;
+}
+
+.action-meta {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.action-card-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.action-status {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.action-status.status-pending {
+  color: #475569;
+}
+
+.action-status.status-approved {
+  color: #1d4ed8;
+}
+
+.action-status.status-executed {
+  color: #166534;
+}
+
+.action-status.status-cancelled {
+  color: #b91c1c;
+}
+
+.action-status.status-failed {
+  color: #b91c1c;
+}
+
+.action-card-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .footer {
@@ -788,6 +876,13 @@ textarea {
     const DEFAULT_VOICE_VOLUME = 1.0;
     let availableVoices = [];
     let currentCalendarSources = [];
+    const ACTION_STATUS_LABELS = {
+      pending: 'Pending',
+      approved: 'Approved',
+      executed: 'Executed',
+      cancelled: 'Cancelled',
+      failed: 'Failed',
+    };
 
     function modeStatusPrefix() {
       return currentMode() === 'development_assistant'
@@ -1091,6 +1186,55 @@ textarea {
       } catch {
         return response.statusText || 'Request failed.';
       }
+    }
+
+    function newActionId() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+      }
+      return 'action_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+    }
+
+    function normalizeAction(action) {
+      const normalized = action && typeof action === 'object' ? { ...action } : {};
+      normalized.args = normalized.args && typeof normalized.args === 'object' ? { ...normalized.args } : {};
+      normalized.action_id = normalized.action_id || newActionId();
+      normalized.created_at = typeof normalized.created_at === 'number' ? normalized.created_at : Date.now() / 1000;
+      normalized.status = typeof normalized.status === 'string' && normalized.status
+        ? normalized.status.toLowerCase()
+        : 'pending';
+      return normalized;
+    }
+
+    function isFinalActionStatus(status) {
+      return status === 'executed' || status === 'cancelled' || status === 'failed';
+    }
+
+    function setActionStatus(action, status) {
+      if (!action) return;
+      action.status = status;
+    }
+
+    function findActionById(actionId) {
+      return currentProposedActions.find(action => action.action_id === actionId) || null;
+    }
+
+    function formatActionStatus(status) {
+      return ACTION_STATUS_LABELS[status] || 'Pending';
+    }
+
+    function formatActionCreatedAt(createdAt) {
+      if (typeof createdAt !== 'number') return '';
+      return new Date(createdAt * 1000).toLocaleString();
+    }
+
+    function isExecutableAction(action) {
+      return action.type === 'open_app'
+        || action.type === 'open_vscode'
+        || action.type === 'open_edge'
+        || action.type === 'open_url'
+        || action.type === 'refresh_sitrep'
+        || action.type === 'read_sitrep';
     }
 
     function renderCalendarSources() {
@@ -1669,7 +1813,7 @@ textarea {
 
     function renderActions(actions) {
       const el = document.getElementById('actions');
-      currentProposedActions = Array.isArray(actions) ? actions : [];
+      currentProposedActions = Array.isArray(actions) ? actions.map(normalizeAction) : [];
 
       if (!currentProposedActions.length) {
         el.innerHTML = '<div class="actions-empty">No proposed actions available.</div>';
@@ -1679,35 +1823,105 @@ textarea {
       el.innerHTML = '';
 
       currentProposedActions.forEach((action, index) => {
-        const line = document.createElement('div');
-        line.className = 'action-line';
+        const card = document.createElement('div');
+        card.className = 'action-card is-' + action.status;
+        card.dataset.actionId = action.action_id || '';
+
+        const header = document.createElement('div');
+        header.className = 'action-card-header';
+
+        const title = document.createElement('div');
+        title.className = 'action-card-title';
+        title.textContent = action.type || `action_${index + 1}`;
+
+        const risk = document.createElement('div');
+        risk.className = 'action-risk';
+        risk.textContent = 'Risk: Low';
+
+        header.appendChild(title);
+        header.appendChild(risk);
+        card.appendChild(header);
 
         const text = document.createElement('div');
         text.className = 'action-text';
-        const parts = [`${index + 1}. ${action.label || action.type || 'unknown'}`];
-        if (action.app) parts.push('app: ' + action.app);
-        if (action.args && action.args.implemented === false) parts.push('status: not implemented');
-        if (action.args && action.args.implemented === true) parts.push('status: available');
-        if (action.args && action.args.note) parts.push(action.args.note);
-        text.textContent = parts.join(' | ');
+        text.textContent = action.label || action.type || 'Unknown action';
+        card.appendChild(text);
 
-        line.appendChild(text);
+        const meta = document.createElement('div');
+        meta.className = 'action-meta';
+        const metaParts = ['Requires Approval'];
+        if (action.app) metaParts.push('app: ' + action.app);
+        if (action.args && action.args.note) metaParts.push(action.args.note);
+        if (action.action_id) metaParts.push('id: ' + action.action_id);
+        const createdLabel = formatActionCreatedAt(action.created_at);
+        if (createdLabel) metaParts.push('created: ' + createdLabel);
+        meta.textContent = metaParts.join(' | ');
+        card.appendChild(meta);
 
-        const isExecutable =
-          action.type === 'open_app'
-          || action.type === 'open_url'
-          || action.type === 'refresh_sitrep'
-          || action.type === 'read_sitrep';
-        if (isExecutable) {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.textContent = 'Execute';
-          btn.onclick = () => executeAction(action);
-          line.appendChild(btn);
+        const actionsRow = document.createElement('div');
+        actionsRow.className = 'action-card-actions';
+
+        if (isExecutableAction(action) && !isFinalActionStatus(action.status)) {
+          const approveBtn = document.createElement('button');
+          approveBtn.type = 'button';
+          approveBtn.textContent = 'Approve';
+          approveBtn.disabled = action.status === 'approved';
+          approveBtn.onclick = () => executeAction(action.action_id);
+          actionsRow.appendChild(approveBtn);
         }
 
-        el.appendChild(line);
+        if (!isFinalActionStatus(action.status)) {
+          const cancelBtn = document.createElement('button');
+          cancelBtn.type = 'button';
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.onclick = () => cancelAction(action.action_id);
+          actionsRow.appendChild(cancelBtn);
+        }
+
+        card.appendChild(actionsRow);
+
+        const status = document.createElement('div');
+        status.className = 'action-status status-' + action.status;
+        status.textContent = 'Status: ' + formatActionStatus(action.status);
+        card.appendChild(status);
+
+        el.appendChild(card);
       });
+    }
+
+    async function postClientActionStatus(action, status, result) {
+      try {
+        const response = await fetch('/api/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...action,
+            client_execution: {
+              status,
+              result,
+            }
+          })
+        });
+        if (!response.ok) {
+          throw new Error(await responseDetail(response));
+        }
+        return response.json();
+      } catch (error) {
+        console.error(error);
+        throw error;
+      }
+    }
+
+    async function cancelAction(actionId) {
+      const action = findActionById(actionId);
+      if (!action) return;
+      try {
+        await postClientActionStatus(action, 'cancelled', 'cancelled by user');
+        setActionStatus(action, 'cancelled');
+      } catch {
+        setActionStatus(action, 'failed');
+      }
+      renderActions(currentProposedActions);
     }
 
     async function sendMsg() {
@@ -1753,26 +1967,60 @@ textarea {
       }
     }
 
-    async function executeAction(action) {
+    async function executeAction(actionId) {
+      const action = findActionById(actionId);
+      if (!action || isFinalActionStatus(action.status)) {
+        return;
+      }
+
+      setActionStatus(action, 'approved');
+      renderActions(currentProposedActions);
+
       if (action.type === 'refresh_sitrep') {
+        try {
+          await postClientActionStatus(action, 'approved', 'approved by user');
+        } catch (error) {
+          setActionStatus(action, 'failed');
+          renderActions(currentProposedActions);
+          appendChatMessage('TITAN', error.message || 'Failed to record approval for that action.');
+          return;
+        }
         const ok = await loadSitrep();
-        appendChatMessage(
-          'TITAN',
-          ok
-            ? 'I refreshed the sitrep from the current dashboard data sources.'
-            : "I don't know based on the information I have. The sitrep refresh did not succeed."
-        );
+        const resultMessage = ok
+          ? 'I refreshed the sitrep from the current dashboard data sources.'
+          : "I don't know based on the information I have. The sitrep refresh did not succeed.";
+        try {
+          await postClientActionStatus(action, ok ? 'executed' : 'failed', ok ? 'success' : 'sitrep refresh failed');
+        } catch (error) {
+          console.error(error);
+        }
+        setActionStatus(action, ok ? 'executed' : 'failed');
+        renderActions(currentProposedActions);
+        appendChatMessage('TITAN', resultMessage);
         return;
       }
 
       if (action.type === 'read_sitrep') {
+        try {
+          await postClientActionStatus(action, 'approved', 'approved by user');
+        } catch (error) {
+          setActionStatus(action, 'failed');
+          renderActions(currentProposedActions);
+          appendChatMessage('TITAN', error.message || 'Failed to record approval for that action.');
+          return;
+        }
         const ok = speakSitrep();
-        appendChatMessage(
-          'TITAN',
-          ok
-            ? 'I started reading the current sitrep aloud.'
-            : "I don't know based on the information I have. Speech synthesis is unavailable in this browser."
-        );
+        const resultMessage = ok
+          ? 'I started reading the current sitrep aloud.'
+          : "I don't know based on the information I have. Speech synthesis is unavailable in this browser.";
+        try {
+          await postClientActionStatus(action, ok ? 'executed' : 'failed', ok ? 'success' : 'speech synthesis unavailable');
+        } catch (error) {
+          console.error(error);
+        }
+        setActionStatus(action, ok ? 'executed' : 'failed');
+        renderActions(currentProposedActions);
+        appendChatMessage('TITAN', resultMessage);
         return;
       }
 
@@ -1784,16 +2032,23 @@ textarea {
         });
 
         if (!response.ok) {
-          appendChatMessage('TITAN', 'Execute failed: ' + response.status);
+          const detail = await responseDetail(response);
+          setActionStatus(action, 'failed');
+          renderActions(currentProposedActions);
+          appendChatMessage('TITAN', 'Execute failed: ' + detail);
           updateHeaderStatus('error');
           return;
         }
 
         const result = await response.json();
+        setActionStatus(action, result.action_status || (result.status === 'executed' ? 'executed' : 'failed'));
+        renderActions(currentProposedActions);
         appendChatMessage('TITAN', result.message || 'Action finished.');
         updateHeaderStatus();
       } catch (error) {
         console.error(error);
+        setActionStatus(action, 'failed');
+        renderActions(currentProposedActions);
         appendChatMessage('TITAN', 'Failed to execute action.');
         updateHeaderStatus('error');
       }

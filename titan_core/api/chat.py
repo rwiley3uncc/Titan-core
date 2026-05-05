@@ -28,6 +28,12 @@ from titan_core.models import MemoryItem, User
 from titan_core.rules import propose_actions
 from titan_core.schemas import BrainInput, ChatMessage, ChatRequest, ChatResponse, ProposedAction, ProposedPlan, TaskRecord
 from titan_core.task_store import create_task, list_tasks, reschedule_task, update_task_status
+from titan_core.verified_sources import (
+    get_verified_source_context,
+    get_verified_source_details,
+    has_verified_source_for_topic,
+    missing_verified_source_reply,
+)
 
 router = APIRouter()
 REPLACEMENT_INTENT_TOKENS = ("instead", "actually", "do this instead", "replace")
@@ -159,11 +165,19 @@ def recent_memory_context(db: Session, user_id: int, limit: int = 8) -> str:
     rows = db.query(MemoryItem).filter(MemoryItem.user_id == user_id).order_by(MemoryItem.score.desc(), MemoryItem.id.desc()).limit(limit).all()
     return "No known user facts yet." if not rows else "\n".join(["Known facts about the user:"] + [f"- {row.content}" for row in rows])
 
-def build_brain_input(db: Session, user: User, req: ChatRequest, clean_text: str) -> BrainInput:
+def build_brain_input(
+    db: Session,
+    user: User,
+    req: ChatRequest,
+    clean_text: str,
+    verified_source_context: str | None = None,
+    verified_source_names: list[str] | None = None,
+    include_personal_memory: bool = True,
+) -> BrainInput:
     safe_mode = req.mode if req.mode in {"personal_general", "personal_productivity", "personal_builder", "personal_family", "development_assistant"} else "personal_general"
     messages: list[ChatMessage] = []
 
-    if should_use_personal_memory(safe_mode):
+    if should_use_personal_memory(safe_mode) and include_personal_memory:
         messages.append(ChatMessage(role="system", content=recent_memory_context(db, user.id)))
 
     if safe_mode == "development_assistant" and req.file_name and req.file_content:
@@ -179,6 +193,20 @@ def build_brain_input(db: Session, user: User, req: ChatRequest, clean_text: str
                     f"File name: {req.file_name}\n"
                     "File contents:\n"
                     f"{req.file_content}"
+                ),
+            )
+        )
+    elif verified_source_context:
+        names = ", ".join(verified_source_names or []) or "verified source"
+        messages.append(
+            ChatMessage(
+                role="system",
+                content=(
+                    "Verified source enforcement is active.\n"
+                    f"Approved sources: {names}\n"
+                    "Answer only from the verified source context below.\n"
+                    "If the source does not support an answer, say you do not have enough verified information.\n\n"
+                    f"{verified_source_context}"
                 ),
             )
         )
@@ -539,6 +567,25 @@ def _finalize_chat_response(user_message: str, response: ChatResponse) -> ChatRe
     return response
 
 
+def _finalize_with_metadata(
+    user_message: str,
+    response: ChatResponse,
+    route_used: str | None = None,
+    source_status: str | None = None,
+    source_names: list[str] | None = None,
+    confidence: str | None = None,
+) -> ChatResponse:
+    if route_used is not None:
+        response.route_used = route_used
+    if source_status is not None:
+        response.source_status = source_status
+    if source_names is not None:
+        response.source_names = source_names
+    if confidence is not None:
+        response.confidence = confidence
+    return _finalize_chat_response(user_message, response)
+
+
 def sanitize_uploaded_file(req: ChatRequest) -> tuple[str | None, str | None, str | None]:
     file_name = (req.file_name or "").strip()
     file_content = req.file_content
@@ -547,11 +594,11 @@ def sanitize_uploaded_file(req: ChatRequest) -> tuple[str | None, str | None, st
         return None, None, None
 
     if not file_name or file_content is None:
-        return None, None, "The uploaded development file is incomplete. Please reattach it and try again."
+        return None, None, "The uploaded file is incomplete. Please reattach it and try again."
 
     lowered_name = file_name.lower()
     if not any(lowered_name.endswith(ext) for ext in ALLOWED_UPLOAD_EXTENSIONS):
-        return None, None, "That file type is not supported for Development Assistant review."
+        return None, None, "That file type is not supported for verified chat grounding or Development Assistant review."
 
     cleaned_content = file_content.replace("\x00", "")
     if len(cleaned_content) > MAX_UPLOAD_CHARS:
@@ -565,14 +612,9 @@ def asks_for_dev_review(text: str) -> bool:
     return any(
         phrase in normalized
         for phrase in (
-            "debug",
             "review",
             "check this file",
             "look over this file",
-            "what is wrong",
-            "what's wrong",
-            "fix this",
-            "help with this code",
             "look at this file",
         )
     )
@@ -586,6 +628,58 @@ def development_missing_context_response() -> ChatResponse:
         ),
         proposed_actions=[],
     )
+
+
+def classify_route(text: str, mode: str, personal_intent: str | None = None) -> str:
+    normalized = normalize_text(text)
+
+    # Preserve the existing grounded assistant path for sitrep/task/dashboard requests.
+    if personal_intent:
+        return "personal_grounded"
+
+    if is_development_assistant_mode(mode):
+        return "development_assistant"
+
+    if is_question(text):
+        return "verified_knowledge"
+
+    knowledge_hints = (
+        "explain",
+        "definition",
+        "define",
+        "what is",
+        "how does",
+        "why does",
+        "who is",
+        "math",
+        "calculus",
+        "physics",
+        "chemistry",
+        "history",
+        "coding",
+        "programming",
+        "fastapi",
+        "python",
+        "research",
+    )
+    if any(hint in normalized for hint in knowledge_hints):
+        return "verified_knowledge"
+
+    personal_hints = (
+        "schedule",
+        "calendar",
+        "task",
+        "deadline",
+        "sitrep",
+        "reminder",
+        "assignment",
+        "study",
+        "class",
+    )
+    if any(hint in normalized for hint in personal_hints):
+        return "personal_grounded"
+
+    return "unsupported"
 
 
 TODAY_TOKENS = {"today", "toda", "tody", "todays"}
@@ -948,31 +1042,31 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     planned_agent_result = plan_agent_or_plan(clean_text)
     file_name, file_content, file_error = sanitize_uploaded_file(req)
     if not clean_text:
-        return _finalize_chat_response(clean_text, ChatResponse(reply="Please enter a message.", proposed_actions=[]))
+        return _finalize_with_metadata(clean_text, ChatResponse(reply="Please enter a message.", proposed_actions=[]), route_used="unsupported", source_status="not_applicable", source_names=[], confidence="low")
     if file_error:
-        return _finalize_chat_response(clean_text, ChatResponse(reply=file_error, proposed_actions=[]))
+        return _finalize_with_metadata(clean_text, ChatResponse(reply=file_error, proposed_actions=[]), route_used="unsupported", source_status="invalid_source", source_names=[], confidence="low")
     if is_personal_assistant_mode(mode):
         task_response = task_command_response(clean_text, now)
         if task_response is not None:
-            return _finalize_chat_response(clean_text, task_response)
+            return _finalize_with_metadata(clean_text, task_response, route_used="personal_grounded", source_status="verified", source_names=["task store"], confidence="high")
     if should_use_personal_memory(mode) and is_memory_save_request(clean_text):
         memory_content = extract_memory_content(clean_text)
         if not memory_content:
-            return _finalize_chat_response(clean_text, ChatResponse(reply="Tell me what you want me to remember.", proposed_actions=[]))
+            return _finalize_with_metadata(clean_text, ChatResponse(reply="Tell me what you want me to remember.", proposed_actions=[]), route_used="personal_grounded", source_status="verified", source_names=["user memory"], confidence="high")
         duplicate = find_duplicate_memory(db=db, user_id=user.id, tag="user", content=memory_content)
         if duplicate:
-            return _finalize_chat_response(clean_text, ChatResponse(reply=f"I already had that in memory: {duplicate.content}", proposed_actions=[]))
+            return _finalize_with_metadata(clean_text, ChatResponse(reply=f"I already had that in memory: {duplicate.content}", proposed_actions=[]), route_used="personal_grounded", source_status="verified", source_names=["user memory"], confidence="high")
         memory = create_memory(db=db, user_id=user.id, tag="user", content=memory_content, score=max(2, memory_importance_score(memory_content)))
-        return _finalize_chat_response(clean_text, ChatResponse(reply=f"Got it. I'll remember that: {memory.content}", proposed_actions=[]))
+        return _finalize_with_metadata(clean_text, ChatResponse(reply=f"Got it. I'll remember that: {memory.content}", proposed_actions=[]), route_used="personal_grounded", source_status="verified", source_names=["user memory"], confidence="high")
     if should_use_personal_memory(mode) and (should_auto_remember(clean_text) or memory_importance_score(clean_text) >= 2):
         duplicate = find_duplicate_memory(db=db, user_id=user.id, tag="user", content=clean_text)
         if duplicate:
-            return _finalize_chat_response(clean_text, ChatResponse(reply=f"I already had that in memory: {duplicate.content}", proposed_actions=[]))
+            return _finalize_with_metadata(clean_text, ChatResponse(reply=f"I already had that in memory: {duplicate.content}", proposed_actions=[]), route_used="personal_grounded", source_status="verified", source_names=["user memory"], confidence="high")
         memory = create_memory(db=db, user_id=user.id, tag="user", content=clean_text, score=memory_importance_score(clean_text))
-        return _finalize_chat_response(clean_text, ChatResponse(reply=f"Got it. I'll keep that in mind: {memory.content}", proposed_actions=[]))
+        return _finalize_with_metadata(clean_text, ChatResponse(reply=f"Got it. I'll keep that in mind: {memory.content}", proposed_actions=[]), route_used="personal_grounded", source_status="verified", source_names=["user memory"], confidence="high")
     memory_match = find_memory_match(db, user.id, clean_text) if should_use_personal_memory(mode) else None
     if memory_match:
-        return _finalize_chat_response(clean_text, ChatResponse(reply=answer_from_memory(clean_text, memory_match), proposed_actions=[]))
+        return _finalize_with_metadata(clean_text, ChatResponse(reply=answer_from_memory(clean_text, memory_match), proposed_actions=[]), route_used="personal_grounded", source_status="verified", source_names=["user memory"], confidence="high")
     if req.active_plan and _is_replacement_intent(clean_text):
         replacement_action = plan_agent_or_plan(clean_text)
         if isinstance(replacement_action, AgentAction) and validate_agent_action(replacement_action):
@@ -1023,28 +1117,87 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             )
     if isinstance(planned_agent_result, AgentPlan) and validate_agent_plan(planned_agent_result):
         proposed_plan = _agent_plan_to_proposed_plan(planned_agent_result)
-        return _finalize_chat_response(clean_text, ChatResponse(
+        return _finalize_with_metadata(clean_text, ChatResponse(
             reply="Here's a guided plan for your day.",
             proposed_actions=proposed_plan.actions,
             proposed_plan=proposed_plan,
-        ))
+        ), route_used="personal_grounded", source_status="verified", source_names=["agent planning"], confidence="medium")
+
+    personal_intent = detect_personal_intent(clean_text) if is_personal_assistant_mode(mode) else None
+
     if is_personal_assistant_mode(mode):
-        intent = detect_personal_intent(clean_text)
+        intent = personal_intent
         if intent:
             payload = build_sitrep_payload(weather_summary="")
-            return _finalize_chat_response(clean_text, personal_assistant_response(intent, payload))
+            details = get_verified_source_details(clean_text, {"personal_intent": intent, "sitrep_payload": payload})
+            return _finalize_with_metadata(
+                clean_text,
+                personal_assistant_response(intent, payload),
+                route_used="personal_grounded",
+                source_status=details.status,
+                source_names=details.names,
+                confidence=details.confidence,
+            )
+
+    route_used = classify_route(clean_text, mode, personal_intent=personal_intent)
+    verified_context = {
+        "personal_intent": personal_intent,
+        "file_name": file_name,
+        "file_content": file_content,
+    }
+
+    # Personal Assistant mode must refuse general knowledge unless we have
+    # an approved source to ground the answer.
+    if is_personal_assistant_mode(mode) and route_used == "verified_knowledge":
+        details = get_verified_source_details(clean_text, verified_context)
+        if not has_verified_source_for_topic(clean_text, verified_context):
+            return _finalize_with_metadata(
+                clean_text,
+                ChatResponse(reply=missing_verified_source_reply(clean_text), proposed_actions=[]),
+                route_used="verified_knowledge",
+                source_status=details.status,
+                source_names=details.names,
+                confidence=details.confidence,
+            )
+
+        out = run_brain(
+            build_brain_input(
+                db,
+                user,
+                ChatRequest(
+                    message=req.message,
+                    mode=mode,
+                    file_name=file_name,
+                    file_content=file_content,
+                ),
+                clean_text,
+                verified_source_context=get_verified_source_context(clean_text, verified_context),
+                verified_source_names=details.names,
+                include_personal_memory=False,
+            ),
+            db=db,
+            user_id=user.id,
+        )
+        return _finalize_with_metadata(
+            clean_text,
+            ChatResponse(reply=out.reply, proposed_actions=out.proposed_actions),
+            route_used="verified_knowledge",
+            source_status=details.status,
+            source_names=details.names,
+            confidence=details.confidence,
+        )
     if isinstance(planned_agent_result, AgentAction) and validate_agent_action(planned_agent_result):
         proposed_action = _agent_action_to_proposed_action(planned_agent_result)
         if planned_agent_result.name == "open_vscode":
-            return _finalize_chat_response(clean_text, ChatResponse(
+            return _finalize_with_metadata(clean_text, ChatResponse(
                 reply="I can open VS Code. Approve the proposed action when you're ready.",
                 proposed_actions=[proposed_action],
-            ))
+            ), route_used=route_used, source_status="not_applicable", source_names=[], confidence="medium")
         if planned_agent_result.name == "open_edge":
-            return _finalize_chat_response(clean_text, ChatResponse(
+            return _finalize_with_metadata(clean_text, ChatResponse(
                 reply="I can open Microsoft Edge. Approve the proposed action when you're ready.",
                 proposed_actions=[proposed_action],
-            ))
+            ), route_used=route_used, source_status="not_applicable", source_names=[], confidence="medium")
     actions = propose_actions(clean_text)
     if actions:
         top_action = actions[0]
@@ -1076,9 +1229,9 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
                 for action in actions
             ],
         )
-        return _finalize_chat_response(clean_text, response)
+        return _finalize_with_metadata(clean_text, response, route_used=route_used, source_status="not_applicable", source_names=[], confidence="medium")
     if is_personal_assistant_mode(mode):
-        return _finalize_chat_response(clean_text, personal_unknown_response(clean_text))
+        return _finalize_with_metadata(clean_text, personal_unknown_response(clean_text), route_used=route_used, source_status="missing_verified_source" if route_used == "unsupported" else "not_applicable", source_names=[], confidence="low")
     dev_req = ChatRequest(
         message=req.message,
         mode=mode,
@@ -1086,11 +1239,43 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         file_content=file_content,
     )
     if is_development_assistant_mode(mode) and asks_for_dev_review(clean_text) and not file_content:
-        return _finalize_chat_response(clean_text, development_missing_context_response())
-    out = run_brain(build_brain_input(db, user, dev_req, clean_text), db=db, user_id=user.id)
+        out = run_brain(build_brain_input(db, user, dev_req, clean_text, include_personal_memory=False), db=db, user_id=user.id)
+        prefixed_reply = out.reply
+        if "general programming guidance" not in prefixed_reply.lower():
+            prefixed_reply = f"General programming guidance:\n\n{prefixed_reply}"
+        return _finalize_with_metadata(
+            clean_text,
+            ChatResponse(reply=prefixed_reply, proposed_actions=out.proposed_actions),
+            route_used="development_assistant",
+            source_status="unverified_general_guidance",
+            source_names=[],
+            confidence="medium",
+        )
+
+    out = run_brain(
+        build_brain_input(
+            db,
+            user,
+            dev_req,
+            clean_text,
+            verified_source_context=get_verified_source_context(clean_text, verified_context) if file_content else None,
+            verified_source_names=get_verified_source_details(clean_text, verified_context).names if file_content else None,
+            include_personal_memory=False,
+        ),
+        db=db,
+        user_id=user.id,
+    )
     if is_development_assistant_mode(mode) and file_name and file_name not in out.reply:
         out.reply = f"Reviewing `{file_name}`.\n\n{out.reply}"
-    return _finalize_chat_response(clean_text, ChatResponse(reply=out.reply, proposed_actions=out.proposed_actions))
+    source_details = get_verified_source_details(clean_text, verified_context) if file_content else None
+    return _finalize_with_metadata(
+        clean_text,
+        ChatResponse(reply=out.reply, proposed_actions=out.proposed_actions),
+        route_used="development_assistant",
+        source_status=source_details.status if source_details else "unverified_general_guidance",
+        source_names=source_details.names if source_details else [],
+        confidence=source_details.confidence if source_details else "medium",
+    )
 
 
 @router.get("/tasks", response_model=list[TaskRecord])

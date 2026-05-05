@@ -24,6 +24,12 @@ from titan_core.db import Base, SessionLocal, engine
 from titan_core.models import User
 import titan_core.models
 
+from titan_core.config import (
+    is_verified_web_enabled,
+    get_search_provider,
+    get_searxng_url
+)
+
 app = FastAPI(
     title="Titan Core",
     version="0.3.0",
@@ -97,3 +103,10 @@ def seed_default_user() -> dict:
         }
     finally:
         db.close()
+@app.get("/debug/verified-web", response_class=JSONResponse)
+def debug_verified_web() -> dict:
+    return {
+        "env_enabled": is_verified_web_enabled(),
+        "provider": get_search_provider(),
+        "searxng_url": get_searxng_url(),
+    }

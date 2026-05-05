@@ -13,7 +13,7 @@ $uiUrl = "http://127.0.0.1:8000/ui/index.html?fresh=30"
 
 # CHANGE THIS if your Ubuntu web server command is different
 $wslDistro = "Ubuntu"
-$wslWebCommand = "cd ~/Titan-core && python3 web_server.py"
+$wslWebCommand = "cd /mnt/c/users/mouse/dev/titan-core && source .venv/bin/activate && python -m searx.webapp"
 
 Write-Host "Starting Titan..." -ForegroundColor Cyan
 

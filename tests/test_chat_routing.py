@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from titan_core.api import chat as chat_api
+from titan_core.config import get_search_provider, get_searxng_url, is_verified_web_enabled
 from titan_core.schemas import BrainOutput, ChatRequest
 from titan_core import verified_web
 from titan_core.verified_web import VerifiedWebResult, VerifiedWebSource, build_verified_web_context, filter_trusted_results, is_allowed_searxng_url, is_trusted_url
@@ -65,6 +66,10 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertEqual(response.source_label, "Source: Sitrep / Dashboard")
         self.assertIn("sitrep payload", response.source_names)
         self.assertIn("Based on the current sitrep/dashboard data", response.reply)
+
+    def test_chat_request_parses_web_enabled_true(self) -> None:
+        req = ChatRequest(message="hello", web_enabled=True)
+        self.assertTrue(req.web_enabled)
 
     def test_personal_assistant_refuses_unverified_general_knowledge(self) -> None:
         with (
@@ -215,7 +220,7 @@ class ChatRoutingTests(unittest.TestCase):
             patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
             patch.object(chat_api, "plan_agent_or_plan", return_value=None),
             patch.object(chat_api, "find_memory_match", return_value=None),
-            patch.object(chat_api.settings, "verified_web_enabled", True),
+            patch("titan_core.api.chat.is_verified_web_enabled", return_value=True),
             patch.object(chat_api, "build_verified_web_context", return_value=trusted_web) as provider_mock,
             patch.object(chat_api, "run_brain", return_value=BrainOutput(reply="Python 3.14.0 is the latest release.", proposed_actions=[])),
         ):
@@ -226,12 +231,79 @@ class ChatRoutingTests(unittest.TestCase):
         provider_mock.assert_called_once()
         self.assertEqual(response.source_type, "verified_web")
 
+    def test_web_allowed_true_attempts_lookup_for_current_fact(self) -> None:
+        with (
+            patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
+            patch.object(chat_api, "plan_agent_or_plan", return_value=None),
+            patch.object(chat_api, "find_memory_match", return_value=None),
+            patch("titan_core.api.chat.is_verified_web_enabled", return_value=True),
+            patch.object(chat_api, "build_verified_web_context", return_value=None) as provider_mock,
+        ):
+            response = chat_api.chat(
+                ChatRequest(message="Who is the current CEO of OpenAI?", mode="personal_general", web_enabled=True),
+                db=self.db,
+            )
+        provider_mock.assert_called_once()
+        self.assertIn("verified current source", response.reply)
+
+    def test_current_fact_answers_when_mocked_searxng_returns_trusted_context(self) -> None:
+        trusted_web = VerifiedWebResult(
+            query="Who is the current CEO of OpenAI?",
+            source_status="snippet_only",
+            confidence="medium",
+            sources=[
+                VerifiedWebSource(
+                    title="OpenAI",
+                    url="https://openai.com/about/",
+                    domain="openai.com",
+                    extracted_text="OpenAI leadership information.",
+                    source_status="snippet_only",
+                )
+            ],
+        )
+        with (
+            patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
+            patch.object(chat_api, "plan_agent_or_plan", return_value=None),
+            patch.object(chat_api, "find_memory_match", return_value=None),
+            patch("titan_core.api.chat.is_verified_web_enabled", return_value=True),
+            patch.object(chat_api, "build_verified_web_context", return_value=trusted_web),
+            patch.object(chat_api, "run_brain", return_value=BrainOutput(reply="The verified source identifies the current CEO.", proposed_actions=[])),
+        ):
+            response = chat_api.chat(
+                ChatRequest(message="Who is the current CEO of OpenAI?", mode="personal_general", web_enabled=True),
+                db=self.db,
+            )
+        self.assertEqual(response.source_type, "verified_web")
+        self.assertIn("Based on verified sources:", response.reply)
+
     def test_missing_provider_or_key_fails_closed(self) -> None:
         with (
             patch.object(verified_web.settings, "verified_web_enabled", True),
             patch.object(verified_web.settings, "search_provider", "brave"),
             patch.object(verified_web.settings, "search_api_key", None),
             patch("titan_core.verified_web.urlopen", side_effect=AssertionError("network should not be called")),
+        ):
+            result = build_verified_web_context("python latest")
+        self.assertIsNone(result)
+
+    def test_searxng_provider_does_not_require_api_key(self) -> None:
+        payload = {"results": []}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc, tb):
+                return False
+            def read(self):
+                import json as _json
+                return _json.dumps(payload).encode("utf-8")
+
+        with (
+            patch("titan_core.verified_web.is_verified_web_enabled", return_value=True),
+            patch("titan_core.verified_web.get_search_provider", return_value="searxng"),
+            patch("titan_core.verified_web.get_searxng_url", return_value="http://127.0.0.1:8080"),
+            patch("titan_core.verified_web.urlopen", return_value=FakeResponse()),
+            patch.object(verified_web.settings, "search_api_key", None),
         ):
             result = build_verified_web_context("python latest")
         self.assertIsNone(result)
@@ -260,9 +332,9 @@ class ChatRoutingTests(unittest.TestCase):
                 return _json.dumps(payload).encode("utf-8")
 
         with (
-            patch.object(verified_web.settings, "verified_web_enabled", True),
-            patch.object(verified_web.settings, "search_provider", "searxng"),
-            patch.object(verified_web.settings, "searxng_url", "http://127.0.0.1:8080"),
+            patch("titan_core.verified_web.is_verified_web_enabled", return_value=True),
+            patch("titan_core.verified_web.get_search_provider", return_value="searxng"),
+            patch("titan_core.verified_web.get_searxng_url", return_value="http://127.0.0.1:8080"),
             patch("titan_core.verified_web.urlopen", return_value=FakeResponse()),
         ):
             result = build_verified_web_context("python latest")
@@ -287,16 +359,16 @@ class ChatRoutingTests(unittest.TestCase):
                 return _json.dumps(payload).encode("utf-8")
 
         with (
-            patch.object(verified_web.settings, "verified_web_enabled", True),
-            patch.object(verified_web.settings, "search_provider", "searxng"),
-            patch.object(verified_web.settings, "searxng_url", "http://127.0.0.1:8080"),
+            patch("titan_core.verified_web.is_verified_web_enabled", return_value=True),
+            patch("titan_core.verified_web.get_search_provider", return_value="searxng"),
+            patch("titan_core.verified_web.get_searxng_url", return_value="http://127.0.0.1:8080"),
             patch("titan_core.verified_web.urlopen", return_value=FakeResponse()),
         ):
             result = build_verified_web_context("python latest")
         self.assertIsNone(result)
 
     def test_mocked_brave_provider_results_are_filtered(self) -> None:
-        with patch.object(verified_web.settings, "verified_web_enabled", True):
+        with patch("titan_core.verified_web.is_verified_web_enabled", return_value=True):
             result = build_verified_web_context(
                 "python latest",
                 search_fn=lambda query: [
@@ -310,7 +382,7 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertEqual(result.source_status, "snippet_only")
 
     def test_mocked_provider_with_only_untrusted_results_returns_none(self) -> None:
-        with patch.object(verified_web.settings, "verified_web_enabled", True):
+        with patch("titan_core.verified_web.is_verified_web_enabled", return_value=True):
             result = build_verified_web_context(
                 "python latest",
                 search_fn=lambda query: [
@@ -357,7 +429,7 @@ class ChatRoutingTests(unittest.TestCase):
             patch.object(chat_api, "find_memory_match", return_value=None),
             patch.object(chat_api, "run_brain", side_effect=fake_run_brain),
             patch.object(chat_api, "build_verified_web_context", return_value=verified_web),
-            patch.object(chat_api.settings, "verified_web_enabled", True),
+            patch("titan_core.api.chat.is_verified_web_enabled", return_value=True),
         ):
             response = chat_api.chat(
                 ChatRequest(message="What is the latest version of Python?", mode="personal_general", web_enabled=True),
@@ -390,7 +462,18 @@ class ChatRoutingTests(unittest.TestCase):
             content = handle.read()
         self.assertIn("Enable Verified Web Access", content)
         self.assertIn("WEB_ENABLED_STORAGE_KEY", content)
-        self.assertIn("web_enabled: currentWebEnabled()", content)
+        self.assertIn("web_enabled: webEnabled", content)
+        self.assertIn("console.debug('[verified_web] sending chat request'", content)
+
+    def test_dynamic_config_helpers(self) -> None:
+        with patch.dict("os.environ", {
+            "TITAN_VERIFIED_WEB_ENABLED": "yes",
+            "TITAN_SEARCH_PROVIDER": "searxng",
+            "TITAN_SEARXNG_URL": "http://127.0.0.1:8888",
+        }, clear=False):
+            self.assertTrue(is_verified_web_enabled())
+            self.assertEqual(get_search_provider(), "searxng")
+            self.assertEqual(get_searxng_url(), "http://127.0.0.1:8888")
 
     def test_development_assistant_still_provides_general_guidance(self) -> None:
         with (

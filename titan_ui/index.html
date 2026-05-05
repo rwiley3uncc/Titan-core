@@ -1377,6 +1377,10 @@ textarea {
     }
 
     function currentWebEnabled() {
+      const checkbox = document.getElementById('webEnabledToggle');
+      if (checkbox) {
+        return !!checkbox.checked;
+      }
       return localStorage.getItem(WEB_ENABLED_STORAGE_KEY) === 'true';
     }
 
@@ -2918,6 +2922,8 @@ textarea {
 
       try {
         const mode = currentMode();
+        const webEnabled = currentWebEnabled();
+        console.debug('[verified_web] sending chat request', { web_enabled: webEnabled, mode });
         updateHeaderStatus(mode === 'development_assistant' ? 'reviewing' : 'thinking');
         const response = await fetch('/api/chat', {
           method: 'POST',
@@ -2925,7 +2931,7 @@ textarea {
           body: JSON.stringify({
             message: text,
             mode,
-            web_enabled: currentWebEnabled(),
+            web_enabled: webEnabled,
             file_name: selectedDevFile ? selectedDevFile.name : null,
             file_content: selectedDevFile ? selectedDevFile.content : null,
             active_plan: activePlanPayload(),

@@ -3,11 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 import ipaddress
 import json
+import logging
 from typing import Callable
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
-from titan_core.config import settings
+from titan_core.config import get_search_provider, get_searxng_url, is_verified_web_enabled, settings
+
+
+logger = logging.getLogger(__name__)
 
 
 TRUSTED_DOMAINS = [
@@ -116,6 +120,7 @@ def _brave_search_results(
     urlopen_fn: Callable[..., object] | None = None,
 ) -> list[dict]:
     if not settings.search_api_key:
+        logger.info("[verified_web] provider=brave returning no results reason=missing_api_key")
         return []
 
     params = urlencode(
@@ -144,11 +149,13 @@ def _brave_search_results(
     except Exception:
         # Fail closed on provider errors. Titan should refuse rather than
         # guessing from model memory.
+        logger.exception("[verified_web] provider=brave request_failed")
         return []
 
     results: list[dict] = []
     web_results = payload.get("web", {}).get("results", [])
     if not isinstance(web_results, list):
+        logger.info("[verified_web] provider=brave returning no results reason=invalid_payload")
         return []
 
     for item in web_results:
@@ -163,6 +170,7 @@ def _brave_search_results(
                 "confidence": "medium",
             }
         )
+    logger.info("[verified_web] provider=brave raw_results=%s", len(results))
     return results
 
 
@@ -170,8 +178,10 @@ def _searxng_search_results(
     query: str,
     urlopen_fn: Callable[..., object] | None = None,
 ) -> list[dict]:
-    base_url = str(settings.searxng_url or "").strip()
+    base_url = get_searxng_url()
+    logger.info("[verified_web] provider=searxng url=%s", base_url or "<missing>")
     if not is_allowed_searxng_url(base_url):
+        logger.info("[verified_web] provider=searxng returning no results reason=disallowed_url")
         return []
 
     params = urlencode({"q": query, "format": "json"})
@@ -190,10 +200,12 @@ def _searxng_search_results(
             payload = json.loads(response.read().decode("utf-8"))
     except Exception:
         # Fail closed on local provider errors rather than guessing.
+        logger.exception("[verified_web] provider=searxng request_failed")
         return []
 
     raw_results = payload.get("results", [])
     if not isinstance(raw_results, list):
+        logger.info("[verified_web] provider=searxng returning no results reason=invalid_payload")
         return []
 
     results: list[dict] = []
@@ -209,20 +221,24 @@ def _searxng_search_results(
                 "confidence": "medium",
             }
         )
+    logger.info("[verified_web] provider=searxng raw_results=%s", len(results))
     return results
 
 
 def _search_provider_results(query: str) -> list[dict]:
-    provider = (settings.search_provider or "").strip().lower()
+    provider = get_search_provider()
     if not provider:
         # Fail closed when no verified provider is configured.
+        logger.info("[verified_web] returning no results reason=missing_provider")
         return []
     if provider == "brave":
         if not settings.search_api_key:
+            logger.info("[verified_web] provider=brave returning no results reason=missing_api_key")
             return []
         return _brave_search_results(query)
     if provider == "searxng":
         return _searxng_search_results(query)
+    logger.info("[verified_web] returning no results reason=unsupported_provider provider=%s", provider)
     return []
 
 
@@ -230,12 +246,31 @@ def build_verified_web_context(
     query: str,
     search_fn: Callable[[str], list[dict]] | None = None,
 ) -> VerifiedWebResult | None:
-    if not settings.verified_web_enabled:
+    env_enabled = is_verified_web_enabled()
+    provider = get_search_provider()
+    searxng_url = get_searxng_url()
+    logger.info(
+        "[verified_web] build start env_enabled=%s provider=%s searxng_url=%s query=%s",
+        env_enabled,
+        provider or "<missing>",
+        searxng_url or "<missing>",
+        query,
+    )
+    if not env_enabled:
+        logger.info("[verified_web] returning None reason=env_disabled")
         return None
 
     fetch_results = search_fn or _search_provider_results
-    trusted_results = filter_trusted_results(fetch_results(query))
+    raw_results = fetch_results(query)
+    trusted_results = filter_trusted_results(raw_results)
+    logger.info(
+        "[verified_web] provider=%s raw_results=%s trusted_results=%s",
+        provider or "<missing>",
+        len(raw_results),
+        len(trusted_results),
+    )
     if not trusted_results:
+        logger.info("[verified_web] returning None reason=no_trusted_results")
         return None
 
     sources: list[VerifiedWebSource] = []
@@ -264,8 +299,10 @@ def build_verified_web_context(
         )
 
     if not sources:
+        logger.info("[verified_web] returning None reason=no_usable_sources")
         return None
 
+    logger.info("[verified_web] returning verified context sources=%s", len(sources))
     return VerifiedWebResult(
         query=query,
         sources=sources,

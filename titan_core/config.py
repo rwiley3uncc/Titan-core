@@ -12,6 +12,25 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = str(os.getenv(name, "")).strip().lower()
+    if not raw:
+        return default
+    return raw in {"true", "1", "yes", "on"}
+
+
+def is_verified_web_enabled() -> bool:
+    return _env_flag("TITAN_VERIFIED_WEB_ENABLED", default=False)
+
+
+def get_search_provider() -> str:
+    return str(os.getenv("TITAN_SEARCH_PROVIDER", "")).strip().lower()
+
+
+def get_searxng_url() -> str:
+    return str(os.getenv("TITAN_SEARXNG_URL", "")).strip()
+
+
 # --------------------------------------------------
 # SETTINGS CLASS
 # --------------------------------------------------
@@ -19,9 +38,7 @@ load_dotenv()
 @dataclass(slots=True)
 class TitanSettings:
     owner_username: str = os.getenv("TITAN_OWNER_USERNAME", "ron")
-    verified_web_enabled: bool = (
-        str(os.getenv("TITAN_VERIFIED_WEB_ENABLED", "false")).strip().lower() == "true"
-    )
+    verified_web_enabled: bool = is_verified_web_enabled()
     search_provider: str | None = (
         os.getenv("TITAN_SEARCH_PROVIDER") or None
     )

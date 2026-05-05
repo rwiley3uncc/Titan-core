@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import time
+import logging
 from datetime import datetime, timedelta
 from typing import Iterable
 from uuid import uuid4
@@ -22,7 +23,7 @@ from titan_core.agent_memory import get_behavior_patterns
 from titan_core.agent import AgentAction, AgentPlan, get_next_step_message, plan_agent_action, plan_agent_or_plan, validate_agent_action, validate_agent_plan
 from titan_core.brain import run_brain
 from titan_core.api.sitrep import build_sitrep_payload
-from titan_core.config import settings
+from titan_core.config import get_search_provider, get_searxng_url, is_verified_web_enabled, settings
 from titan_core.db import get_db
 from titan_core.models import MemoryItem, User
 from titan_core.rules import propose_actions
@@ -38,6 +39,7 @@ from titan_core.verified_sources import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 REPLACEMENT_INTENT_TOKENS = ("instead", "actually", "do this instead", "replace")
 SKIP_INTENT_TOKENS = ("skip this step", "skip it", "skip current step", "skip this", "move past this")
 APPROVE_NEXT_INTENT_TOKENS = ("approve next", "approve this step", "go ahead", "do it", "run next step", "continue")
@@ -1104,7 +1106,10 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     user = get_default_mvp_user(db)
     clean_text = req.message.strip()
     mode = safe_mode(req)
-    web_allowed = bool(req.web_enabled) and bool(settings.verified_web_enabled)
+    env_web_enabled = is_verified_web_enabled()
+    provider = get_search_provider()
+    searxng_url = get_searxng_url()
+    web_allowed = bool(req.web_enabled) and env_web_enabled
     now = datetime.now()
     planned_agent_result = plan_agent_or_plan(clean_text)
     file_name, file_content, file_error = sanitize_uploaded_file(req)
@@ -1215,6 +1220,15 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             )
 
     route_used = classify_route(clean_text, mode, personal_intent=personal_intent)
+    logger.info(
+        "[verified_web] request.web_enabled=%s env_enabled=%s web_allowed=%s provider=%s url=%s route=%s",
+        bool(req.web_enabled),
+        env_web_enabled,
+        web_allowed,
+        provider or "<missing>",
+        searxng_url or "<missing>",
+        route_used,
+    )
     verified_context = {
         "personal_intent": personal_intent,
         "file_name": file_name,
@@ -1228,11 +1242,14 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         if not has_verified_source_for_topic(clean_text, verified_context):
             # Personal Assistant may use verified web only through the
             # controlled trusted-domain retrieval layer.
+            logger.info("[verified_web] attempted=%s route=%s", web_allowed, route_used)
             verified_web = build_verified_web_context(clean_text) if web_allowed else None
             if verified_web is not None:
+                logger.info("[verified_web] context_result=hit")
                 verified_context["verified_web"] = verified_web
                 details = get_verified_source_details(clean_text, verified_context)
             elif is_current_fact_request(clean_text):
+                logger.info("[verified_web] context_result=miss")
                 return _finalize_with_metadata(
                     clean_text,
                     ChatResponse(reply=missing_verified_source_reply(clean_text), proposed_actions=[]),
@@ -1241,6 +1258,8 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
                     source_names=[],
                     confidence="low",
                 )
+            else:
+                logger.info("[verified_web] context_result=miss")
 
         if not has_verified_source_for_topic(clean_text, verified_context):
             return _finalize_with_metadata(
@@ -1397,6 +1416,15 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         source_names=source_details.names if source_details else [],
         confidence=source_details.confidence if source_details else "medium",
     )
+
+
+@router.get("/debug/verified-web")
+def debug_verified_web() -> dict[str, object]:
+    return {
+        "env_enabled": is_verified_web_enabled(),
+        "provider": get_search_provider(),
+        "searxng_url": get_searxng_url(),
+    }
 
 
 @router.get("/tasks", response_model=list[TaskRecord])

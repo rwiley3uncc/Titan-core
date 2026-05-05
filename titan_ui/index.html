@@ -517,6 +517,17 @@ textarea {
   line-height: 1.5;
 }
 
+.plan-next-step {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .plan-actions {
   margin-top: 14px;
 }
@@ -535,6 +546,22 @@ textarea {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 14px;
+}
+
+.plan-replace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.plan-replace-input {
+  min-width: 220px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
 }
 
 .plan-current-step {
@@ -595,6 +622,20 @@ textarea {
 
 .action-card.is-executed {
   border-color: #86efac;
+}
+
+.action-card.is-skipped {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  opacity: 0.82;
+  font-style: italic;
+}
+
+.action-card.is-replaced {
+  border-color: #d1d5db;
+  background: #f8fafc;
+  opacity: 0.78;
+  text-decoration: line-through;
 }
 
 .action-card.is-cancelled {
@@ -689,6 +730,14 @@ textarea {
 
 .action-status.status-failed {
   color: #b91c1c;
+}
+
+.action-status.status-skipped {
+  color: #64748b;
+}
+
+.action-status.status-replaced {
+  color: #64748b;
 }
 
 .action-card-actions button:disabled {
@@ -983,6 +1032,8 @@ textarea {
       executed: 'Executed',
       cancelled: 'Cancelled',
       failed: 'Failed',
+      skipped: 'Skipped',
+      replaced: 'Replaced',
     };
 
     function modeStatusPrefix() {
@@ -1313,12 +1364,13 @@ textarea {
       return {
         ...plan,
         plan_complete: !!plan.plan_complete,
+        next_step_message: String(plan.next_step_message || ''),
         actions: Array.isArray(plan.actions) ? plan.actions.map(normalizeAction) : [],
       };
     }
 
     function isFinalActionStatus(status) {
-      return status === 'executed' || status === 'cancelled' || status === 'failed';
+      return status === 'executed' || status === 'cancelled' || status === 'failed' || status === 'skipped' || status === 'replaced';
     }
 
     function setActionStatus(action, status) {
@@ -1386,6 +1438,9 @@ textarea {
         ? currentProposedPlan.actions.findIndex(action => action.action_id === nextPending.action_id)
         : currentProposedPlan.actions.length;
       currentProposedPlan.plan_complete = !nextPending;
+      currentProposedPlan.next_step_message = nextPending
+        ? `Next step: ${nextPending.label || nextPending.type || 'Unknown action'}. Approve next step when ready.`
+        : 'Plan complete.';
     }
 
     function renderCalendarSources() {
@@ -2088,6 +2143,12 @@ textarea {
         planSummary.textContent = currentProposedPlan.summary || 'No plan summary provided.';
         planPanel.appendChild(planSummary);
 
+        const planNextStep = document.createElement('div');
+        planNextStep.id = 'plan-next-step';
+        planNextStep.className = 'plan-next-step';
+        planNextStep.textContent = currentProposedPlan.next_step_message || 'Plan complete.';
+        planPanel.appendChild(planNextStep);
+
         const planActions = document.createElement('div');
         planActions.className = 'plan-actions';
 
@@ -2113,6 +2174,31 @@ textarea {
         approveNextBtn.disabled = !nextPending || !!currentProposedPlan.plan_complete;
         approveNextBtn.onclick = () => approveNextPlanStep();
         planToolbar.appendChild(approveNextBtn);
+
+        const skipNextBtn = document.createElement('button');
+        skipNextBtn.type = 'button';
+        skipNextBtn.textContent = 'Skip Current Step';
+        skipNextBtn.disabled = !nextPending || !!currentProposedPlan.plan_complete;
+        skipNextBtn.onclick = () => skipNextPlanStep();
+        planToolbar.appendChild(skipNextBtn);
+
+        const replaceRow = document.createElement('div');
+        replaceRow.className = 'plan-replace-row';
+
+        const replaceInput = document.createElement('input');
+        replaceInput.type = 'text';
+        replaceInput.id = 'plan-replace-input';
+        replaceInput.className = 'plan-replace-input';
+        replaceInput.placeholder = 'Replace step with: open vscode';
+        replaceRow.appendChild(replaceInput);
+
+        const replaceBtn = document.createElement('button');
+        replaceBtn.type = 'button';
+        replaceBtn.textContent = 'Replace';
+        replaceBtn.disabled = !nextPending || !!currentProposedPlan.plan_complete;
+        replaceBtn.onclick = () => replaceNextPlanStep();
+        replaceRow.appendChild(replaceBtn);
+        planToolbar.appendChild(replaceRow);
         planActions.appendChild(planToolbar);
 
         currentProposedPlan.actions.forEach((action, index) => {
@@ -2219,11 +2305,92 @@ textarea {
         if (currentProposedPlan) {
           currentProposedPlan.actions = updatedActions;
           currentProposedPlan.plan_complete = !!data.plan_complete;
+          currentProposedPlan.next_step_message = String(data.next_step_message || '');
         }
         renderActions(updatedActions);
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Failed to approve the next plan step.');
+      }
+    }
+
+    async function skipNextPlanStep() {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/plan/skip-next', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: currentProposedPlan.plan_id,
+            actions: currentProposedPlan.actions,
+          })
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          appendChatMessage('TITAN', detail || 'Failed to skip the current plan step.');
+          return;
+        }
+
+        const data = await response.json();
+        const updatedActions = Array.isArray(data.updated_actions) ? data.updated_actions.map(normalizeAction) : [];
+        currentProposedActions = updatedActions;
+        if (currentProposedPlan) {
+          currentProposedPlan.actions = updatedActions;
+          currentProposedPlan.plan_complete = !!data.plan_complete;
+          currentProposedPlan.next_step_message = String(data.next_step_message || '');
+        }
+        renderActions(updatedActions);
+      } catch (error) {
+        console.error(error);
+        appendChatMessage('TITAN', 'Failed to skip the current plan step.');
+      }
+    }
+
+    async function replaceNextPlanStep() {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+        return;
+      }
+
+      const input = document.getElementById('plan-replace-input');
+      const userMessage = input ? input.value.trim() : '';
+      if (!userMessage) {
+        appendChatMessage('TITAN', 'Enter a replacement step before clicking Replace.');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/plan/replace-next', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: currentProposedPlan.plan_id,
+            actions: currentProposedPlan.actions,
+            user_message: userMessage,
+          })
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          appendChatMessage('TITAN', detail || 'Failed to replace the current plan step.');
+          return;
+        }
+
+        const data = await response.json();
+        const updatedActions = Array.isArray(data.updated_actions) ? data.updated_actions.map(normalizeAction) : [];
+        currentProposedActions = updatedActions;
+        if (currentProposedPlan) {
+          currentProposedPlan.actions = updatedActions;
+          currentProposedPlan.plan_complete = !!data.plan_complete;
+          currentProposedPlan.next_step_message = String(data.next_step_message || '');
+        }
+        renderActions(updatedActions);
+      } catch (error) {
+        console.error(error);
+        appendChatMessage('TITAN', 'Failed to replace the current plan step.');
       }
     }
 

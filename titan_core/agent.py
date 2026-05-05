@@ -25,7 +25,7 @@ class AgentAction:
     description: str
     action_id: str = field(default_factory=lambda: str(uuid4()))
     created_at: float = field(default_factory=time.time)
-    status: str = "pending"
+    status: str = "pending"  # pending | approved | cancelled | executed | failed | skipped | replaced
     confidence: float = 0.0
     reason: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
@@ -268,3 +268,10 @@ def get_next_pending_action(plan: AgentPlan) -> AgentAction | None:
 
 def is_plan_complete(plan: AgentPlan) -> bool:
     return all(action.status != "pending" for action in plan.actions)
+
+
+def get_next_step_message(plan: AgentPlan) -> str:
+    next_action = get_next_pending_action(plan)
+    if next_action:
+        return f"Next step: {next_action.description}. Approve next step when ready."
+    return "Plan complete."

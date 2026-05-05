@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from titan_core.action_log import log_action, make_action_log_entry
-from titan_core.agent import AgentAction, AgentPlan, plan_agent_or_plan, validate_agent_action, validate_agent_plan
+from titan_core.agent import AgentAction, AgentPlan, get_next_step_message, plan_agent_or_plan, validate_agent_action, validate_agent_plan
 from titan_core.brain import run_brain
 from titan_core.api.sitrep import build_sitrep_payload
 from titan_core.config import settings
@@ -452,6 +452,7 @@ def _agent_plan_to_proposed_plan(plan: AgentPlan) -> ProposedPlan:
         created_at=plan.created_at,
         summary=plan.summary,
         current_step_index=plan.current_step_index,
+        next_step_message=get_next_step_message(plan),
         actions=[_agent_action_to_proposed_action(action) for action in plan.actions],
     )
 

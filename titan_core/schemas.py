@@ -26,6 +26,7 @@ class ProposedPlan(BaseModel):
     created_at: float
     summary: str
     current_step_index: int = 0
+    next_step_message: str = ""
     actions: List[ProposedAction] = Field(default_factory=list)
 
 

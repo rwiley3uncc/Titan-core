@@ -92,7 +92,7 @@ def _coerce_log_entry(item: dict[str, Any]) -> ActionLogEntry:
 
 def _coerce_status(item: dict[str, Any]) -> str:
     status = str(item.get("status", "")).strip().lower()
-    if status in {"pending", "approved", "cancelled", "executed", "failed"}:
+    if status in {"pending", "approved", "cancelled", "executed", "failed", "skipped", "replaced"}:
         return status
     approved = bool(item.get("approved", False))
     executed = bool(item.get("executed", False))
@@ -101,6 +101,10 @@ def _coerce_status(item: dict[str, Any]) -> str:
         return "executed"
     if approved:
         return "approved"
+    if "replace" in result:
+        return "replaced"
+    if "skip" in result:
+        return "skipped"
     if "cancel" in result:
         return "cancelled"
     if result and result not in {"proposed", "pending"}:

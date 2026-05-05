@@ -588,13 +588,18 @@ def _finalize_with_metadata(
     return _finalize_chat_response(user_message, response)
 
 
-def _format_verified_web_reply(source_names: list[str], answer: str) -> str:
-    unique_names: list[str] = []
-    for name in source_names:
-        if name not in unique_names:
-            unique_names.append(name)
+def _format_verified_web_reply(verified_web: object, answer: str) -> str:
     lines = ["Based on verified sources:"]
-    lines.extend(f"- {name}" for name in unique_names[:3])
+    sources = getattr(verified_web, "sources", []) or []
+    for source in sources[:3]:
+        title = str(getattr(source, "title", "Verified source")).strip()
+        domain = str(getattr(source, "domain", "")).strip()
+        url = str(getattr(source, "url", "")).strip()
+        status = str(getattr(source, "source_status", "snippet_only")).strip() or "snippet_only"
+        if url:
+            lines.append(f"- {title} | {domain} | {status} | {url}")
+        else:
+            lines.append(f"- {title} | {domain} | {status}")
     lines.append("")
     lines.append("Answer:")
     lines.append(answer.strip())
@@ -1213,8 +1218,8 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         return _finalize_with_metadata(
             clean_text,
             ChatResponse(
-                reply=_format_verified_web_reply(details.names, out.reply)
-                if "verified_web_result" in details.source_types
+                reply=_format_verified_web_reply(verified_context.get("verified_web"), out.reply)
+                if "verified_web_result" in details.source_types and verified_context.get("verified_web") is not None
                 else out.reply,
                 proposed_actions=out.proposed_actions,
             ),

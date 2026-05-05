@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Callable
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from titan_core.config import settings
 
@@ -41,7 +43,10 @@ class VerifiedWebResult:
 
 def is_trusted_url(url: str) -> bool:
     parsed = urlparse((url or "").strip())
-    domain = (parsed.netloc or "").strip().lower()
+    if parsed.scheme.lower() != "https":
+        return False
+
+    domain = (parsed.hostname or "").strip().lower()
     if not domain:
         return False
 
@@ -70,15 +75,71 @@ def filter_trusted_results(results: list[dict]) -> list[dict]:
 
 
 def _result_domain(url: str) -> str:
-    return urlparse((url or "").strip()).netloc.lower()
+    return (urlparse((url or "").strip()).hostname or "").lower()
+
+
+def _brave_search_results(
+    query: str,
+    urlopen_fn: Callable[..., object] | None = None,
+) -> list[dict]:
+    if not settings.search_api_key:
+        return []
+
+    params = urlencode(
+        {
+            "q": query,
+            "count": 5,
+            "text_decorations": 0,
+            "result_filter": "web",
+        }
+    )
+    request = Request(
+        url=f"https://api.search.brave.com/res/v1/web/search?{params}",
+        headers={
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": settings.search_api_key,
+            "User-Agent": "TitanCore/verified-web",
+        },
+        method="GET",
+    )
+    opener = urlopen_fn or urlopen
+
+    try:
+        with opener(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        # Fail closed on provider errors. Titan should refuse rather than
+        # guessing from model memory.
+        return []
+
+    results: list[dict] = []
+    web_results = payload.get("web", {}).get("results", [])
+    if not isinstance(web_results, list):
+        return []
+
+    for item in web_results:
+        if not isinstance(item, dict):
+            continue
+        results.append(
+            {
+                "title": str(item.get("title") or "").strip(),
+                "url": str(item.get("url") or "").strip(),
+                "snippet": str(item.get("description") or item.get("snippet") or "").strip(),
+                "source_status": "snippet_only",
+                "confidence": "medium",
+            }
+        )
+    return results
 
 
 def _search_provider_results(query: str) -> list[dict]:
-    # Placeholder only. Production providers can be wired in later without
-    # changing the verified routing contract.
-    _ = query
-    if not settings.search_provider or not settings.search_api_key:
+    provider = (settings.search_provider or "").strip().lower()
+    if not provider or not settings.search_api_key:
+        # Fail closed when no verified provider is configured.
         return []
+    if provider == "brave":
+        return _brave_search_results(query)
     return []
 
 
@@ -112,8 +173,8 @@ def build_verified_web_context(
                 url=url,
                 domain=_result_domain(url),
                 extracted_text=snippet,
-                source_status="verified",
-                confidence="medium",
+                source_status=str(result.get("source_status") or "snippet_only"),
+                confidence=str(result.get("confidence") or "medium"),
             )
         )
 
@@ -123,6 +184,6 @@ def build_verified_web_context(
     return VerifiedWebResult(
         query=query,
         sources=sources,
-        source_status="verified",
+        source_status="snippet_only",
         confidence="medium",
     )

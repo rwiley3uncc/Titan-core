@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from titan_core.api import chat as chat_api
 from titan_core.schemas import BrainOutput, ChatRequest
-from titan_core.verified_web import VerifiedWebResult, VerifiedWebSource, filter_trusted_results, is_trusted_url
+from titan_core import verified_web
+from titan_core.verified_web import VerifiedWebResult, VerifiedWebSource, build_verified_web_context, filter_trusted_results, is_trusted_url
 
 
 FAKE_USER = SimpleNamespace(id=1, role="owner", username="owner")
@@ -135,11 +136,14 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertIn("Based on `calculus_notes.md`", response.reply)
 
     def test_trusted_url_filter_accepts_approved_domains(self) -> None:
+        self.assertTrue(is_trusted_url("https://khanacademy.org/math"))
+        self.assertTrue(is_trusted_url("https://www.khanacademy.org/math"))
         self.assertTrue(is_trusted_url("https://docs.python.org/3/tutorial/"))
-        self.assertTrue(is_trusted_url("https://cs50.harvard.edu/x/"))
+        self.assertTrue(is_trusted_url("https://subdomain.mit.edu/course"))
 
     def test_trusted_url_filter_rejects_random_domains(self) -> None:
         self.assertFalse(is_trusted_url("https://random-blog-example.com/post"))
+        self.assertFalse(is_trusted_url("https://khanacademy.org.fake-site.com/topic"))
         self.assertFalse(is_trusted_url("https://openai.fake-example.com"))
 
     def test_filter_trusted_results_keeps_only_approved_urls(self) -> None:
@@ -152,10 +156,51 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered[0]["title"], "Python Docs")
 
+    def test_verified_web_disabled_makes_no_network_call(self) -> None:
+        sentinel = Mock(side_effect=AssertionError("network should not be called"))
+        with patch.object(verified_web.settings, "verified_web_enabled", False):
+            result = build_verified_web_context("python latest", search_fn=sentinel)
+        self.assertIsNone(result)
+        sentinel.assert_not_called()
+
+    def test_missing_provider_or_key_fails_closed(self) -> None:
+        with (
+            patch.object(verified_web.settings, "verified_web_enabled", True),
+            patch.object(verified_web.settings, "search_provider", "brave"),
+            patch.object(verified_web.settings, "search_api_key", None),
+            patch("titan_core.verified_web.urlopen", side_effect=AssertionError("network should not be called")),
+        ):
+            result = build_verified_web_context("python latest")
+        self.assertIsNone(result)
+
+    def test_mocked_brave_provider_results_are_filtered(self) -> None:
+        with patch.object(verified_web.settings, "verified_web_enabled", True):
+            result = build_verified_web_context(
+                "python latest",
+                search_fn=lambda query: [
+                    {"title": "Python.org", "url": "https://www.python.org/downloads/", "snippet": "Latest Python release."},
+                    {"title": "Blog", "url": "https://random-blog-example.com/post", "snippet": "Random post."},
+                ],
+            )
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual([source.title for source in result.sources], ["Python.org"])
+        self.assertEqual(result.source_status, "snippet_only")
+
+    def test_mocked_provider_with_only_untrusted_results_returns_none(self) -> None:
+        with patch.object(verified_web.settings, "verified_web_enabled", True):
+            result = build_verified_web_context(
+                "python latest",
+                search_fn=lambda query: [
+                    {"title": "Blog", "url": "https://random-blog-example.com/post", "snippet": "Random post."},
+                ],
+            )
+        self.assertIsNone(result)
+
     def test_personal_assistant_uses_mocked_verified_web_context_when_enabled(self) -> None:
         verified_web = VerifiedWebResult(
             query="latest version of Python",
-            source_status="verified",
+            source_status="snippet_only",
             confidence="medium",
             sources=[
                 VerifiedWebSource(
@@ -163,12 +208,14 @@ class ChatRoutingTests(unittest.TestCase):
                     url="https://www.python.org/downloads/",
                     domain="python.org",
                     extracted_text="Python 3.14.0 is the latest Python 3 release.",
+                    source_status="snippet_only",
                 ),
                 VerifiedWebSource(
                     title="Docs Python",
                     url="https://docs.python.org/3/whatsnew/",
                     domain="docs.python.org",
                     extracted_text="The What's New guide tracks current Python releases.",
+                    source_status="snippet_only",
                 ),
             ],
         )
@@ -196,9 +243,16 @@ class ChatRoutingTests(unittest.TestCase):
             )
 
         self.assertEqual(response.route_used, "verified_knowledge")
-        self.assertEqual(response.source_status, "verified")
+        self.assertEqual(response.source_status, "snippet_only")
         self.assertIn("Python.org", response.source_names)
         self.assertTrue(response.reply.startswith("Based on verified sources:"))
+        self.assertIn("python.org", response.reply)
+        self.assertIn("snippet_only", response.reply)
+
+    def test_action_log_path_is_gitignored(self) -> None:
+        with open(".gitignore", "r", encoding="utf-8") as handle:
+            content = handle.read()
+        self.assertIn("data/action_log.json", content)
 
     def test_development_assistant_still_provides_general_guidance(self) -> None:
         with (

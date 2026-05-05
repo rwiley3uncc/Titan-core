@@ -96,6 +96,7 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
     names: list[str] = []
     context_texts: list[str] = []
     source_types: list[str] = []
+    status = "missing_verified_source"
 
     personal_intent = context.get("personal_intent")
     sitrep_payload = context.get("sitrep_payload")
@@ -103,6 +104,7 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
         names.append("sitrep payload")
         source_types.append("sitrep_payload")
         context_texts.append(_sitrep_source_context(sitrep_payload))
+        status = "verified"
 
         calendar_sources = sitrep_payload.get("source_counts") or {}
         if isinstance(calendar_sources, dict) and calendar_sources:
@@ -119,6 +121,7 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
             "Use only the following source text when answering:\n"
             f"{file_content}"
         )
+        status = "verified"
 
     for doc in context.get("docs_sources", []) or []:
         if not isinstance(doc, dict):
@@ -133,6 +136,7 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
             f"Verified local document: {doc_name}\n"
             f"{doc_content}"
         )
+        status = "verified"
 
     for entry in context.get("approved_registry_entries", []) or []:
         if not isinstance(entry, dict):
@@ -147,6 +151,7 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
             f"Approved source registry entry: {entry_name}\n"
             f"{entry_content}"
         )
+        status = "verified"
 
     verified_web = context.get("verified_web")
     if verified_web:
@@ -160,14 +165,16 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
                 continue
             names.append(title)
             source_types.append("verified_web_result")
+            source_status = str(getattr(source, "source_status", "snippet_only")).strip() or "snippet_only"
             source_lines.append(
-                f"- {title} ({url}): {snippet}"
+                f"- {title} | domain: {getattr(source, 'domain', '')} | url: {url} | status: {source_status} | {snippet}"
             )
         if source_lines:
             context_texts.append(
                 "Verified web sources:\n"
                 + "\n".join(source_lines)
             )
+            status = str(getattr(verified_web, "source_status", "snippet_only") or "snippet_only")
 
     deduped_names: list[str] = []
     for name in names:
@@ -182,7 +189,8 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
     elif source_types:
         confidence = "medium"
 
-    status = "verified" if deduped_names else "missing_verified_source"
+    if deduped_names and status == "missing_verified_source":
+        status = "verified"
     return VerifiedSourceResult(
         names=deduped_names,
         context_texts=context_texts,

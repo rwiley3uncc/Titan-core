@@ -32,11 +32,25 @@ class AgentAction:
     requires_approval: bool = True
 
 
+@dataclass(frozen=True)
+class AgentPlan:
+    summary: str
+    actions: list[AgentAction]
+    plan_id: str = field(default_factory=lambda: str(uuid4()))
+    created_at: float = field(default_factory=time.time)
+
+
 SAFE_ACTIONS = {
     "refresh_sitrep",
     "read_sitrep",
     "open_vscode",
     "open_edge",
+}
+
+PLAN_INTENTS = {
+    "start my day",
+    "plan my day",
+    "what should i do today",
 }
 
 
@@ -194,6 +208,40 @@ def plan_agent_action(user_message: str) -> AgentAction | None:
     return None
 
 
+def plan_agent_or_plan(user_message: str) -> AgentAction | AgentPlan | None:
+    normalized = _normalize_text(user_message)
+
+    if any(phrase in normalized for phrase in PLAN_INTENTS):
+        return AgentPlan(
+            summary="Refresh the latest dashboard data, review your sitrep, and then build a suggested schedule for the day.",
+            actions=[
+                AgentAction(
+                    name="refresh_sitrep",
+                    description="Refresh sitrep",
+                    confidence=0.95,
+                    reason="Refreshing data is required before planning.",
+                    payload={},
+                ),
+                AgentAction(
+                    name="read_sitrep",
+                    description="Read current sitrep aloud",
+                    confidence=0.9,
+                    reason="User likely wants a summary of current tasks.",
+                    payload={},
+                ),
+                AgentAction(
+                    name="suggest_schedule",
+                    description="Generate a suggested plan for the day.",
+                    confidence=0.85,
+                    reason="User asked to start their day.",
+                    payload={},
+                ),
+            ],
+        )
+
+    return plan_agent_action(user_message)
+
+
 def validate_agent_action(action: AgentAction | None) -> bool:
     """
     Allow only explicitly safe, allow-listed action names.
@@ -201,3 +249,10 @@ def validate_agent_action(action: AgentAction | None) -> bool:
     This validation is intentionally narrow for the first agent pass.
     """
     return bool(action and action.name in SAFE_ACTIONS)
+
+
+def validate_agent_plan(plan: AgentPlan | None) -> bool:
+    if not plan or not plan.actions:
+        return False
+    allowed_plan_actions = SAFE_ACTIONS | {"suggest_schedule"}
+    return all(action.name in allowed_plan_actions for action in plan.actions)

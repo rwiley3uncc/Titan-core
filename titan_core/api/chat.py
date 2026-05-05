@@ -18,14 +18,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from titan_core.action_log import log_action, make_action_log_entry
-from titan_core.agent import AgentAction, plan_agent_action, validate_agent_action
+from titan_core.agent import AgentAction, AgentPlan, plan_agent_or_plan, validate_agent_action, validate_agent_plan
 from titan_core.brain import run_brain
 from titan_core.api.sitrep import build_sitrep_payload
 from titan_core.config import settings
 from titan_core.db import get_db
 from titan_core.models import MemoryItem, User
 from titan_core.rules import propose_actions
-from titan_core.schemas import BrainInput, ChatMessage, ChatRequest, ChatResponse, ProposedAction, TaskRecord
+from titan_core.schemas import BrainInput, ChatMessage, ChatRequest, ChatResponse, ProposedAction, ProposedPlan, TaskRecord
 from titan_core.task_store import create_task, list_tasks, reschedule_task, update_task_status
 
 router = APIRouter()
@@ -446,6 +446,15 @@ def _agent_action_to_proposed_action(action: AgentAction) -> ProposedAction:
     )
 
 
+def _agent_plan_to_proposed_plan(plan: AgentPlan) -> ProposedPlan:
+    return ProposedPlan(
+        plan_id=plan.plan_id,
+        created_at=plan.created_at,
+        summary=plan.summary,
+        actions=[_agent_action_to_proposed_action(action) for action in plan.actions],
+    )
+
+
 def _ensure_action_metadata(proposed: ProposedAction) -> ProposedAction:
     proposed.action_id = proposed.action_id or str(uuid4())
     proposed.created_at = proposed.created_at if proposed.created_at is not None else time.time()
@@ -458,6 +467,11 @@ def _finalize_chat_response(user_message: str, response: ChatResponse) -> ChatRe
     Log proposed actions as pending review while preserving the existing
     response contract for the UI.
     """
+    if response.proposed_plan:
+        for planned_action in response.proposed_plan.actions:
+            _ensure_action_metadata(planned_action)
+        response.proposed_actions = list(response.proposed_plan.actions)
+
     for proposed in response.proposed_actions:
         _ensure_action_metadata(proposed)
         metadata = dict(proposed.args or {})
@@ -887,7 +901,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     clean_text = req.message.strip()
     mode = safe_mode(req)
     now = datetime.now()
-    planned_agent_action = plan_agent_action(clean_text)
+    planned_agent_result = plan_agent_or_plan(clean_text)
     file_name, file_content, file_error = sanitize_uploaded_file(req)
     if not clean_text:
         return _finalize_chat_response(clean_text, ChatResponse(reply="Please enter a message.", proposed_actions=[]))
@@ -915,19 +929,26 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     memory_match = find_memory_match(db, user.id, clean_text) if should_use_personal_memory(mode) else None
     if memory_match:
         return _finalize_chat_response(clean_text, ChatResponse(reply=answer_from_memory(clean_text, memory_match), proposed_actions=[]))
+    if isinstance(planned_agent_result, AgentPlan) and validate_agent_plan(planned_agent_result):
+        proposed_plan = _agent_plan_to_proposed_plan(planned_agent_result)
+        return _finalize_chat_response(clean_text, ChatResponse(
+            reply="Here’s a suggested plan for your day.",
+            proposed_actions=proposed_plan.actions,
+            proposed_plan=proposed_plan,
+        ))
     if is_personal_assistant_mode(mode):
         intent = detect_personal_intent(clean_text)
         if intent:
             payload = build_sitrep_payload(weather_summary="")
             return _finalize_chat_response(clean_text, personal_assistant_response(intent, payload))
-    if validate_agent_action(planned_agent_action):
-        proposed_action = _agent_action_to_proposed_action(planned_agent_action)
-        if planned_agent_action.name == "open_vscode":
+    if isinstance(planned_agent_result, AgentAction) and validate_agent_action(planned_agent_result):
+        proposed_action = _agent_action_to_proposed_action(planned_agent_result)
+        if planned_agent_result.name == "open_vscode":
             return _finalize_chat_response(clean_text, ChatResponse(
                 reply="I can open VS Code. Approve the proposed action when you're ready.",
                 proposed_actions=[proposed_action],
             ))
-        if planned_agent_action.name == "open_edge":
+        if planned_agent_result.name == "open_edge":
             return _finalize_chat_response(clean_text, ChatResponse(
                 reply="I can open Microsoft Edge. Approve the proposed action when you're ready.",
                 proposed_actions=[proposed_action],

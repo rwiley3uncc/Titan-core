@@ -21,6 +21,13 @@ class ProposedAction(BaseModel):
     args: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ProposedPlan(BaseModel):
+    plan_id: str
+    created_at: float
+    summary: str
+    actions: List[ProposedAction] = Field(default_factory=list)
+
+
 class BrainInput(BaseModel):
     user_id: int
     role: str
@@ -44,6 +51,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     proposed_actions: List[ProposedAction] = Field(default_factory=list)
+    proposed_plan: Optional[ProposedPlan] = None
 
 
 class TaskRecord(BaseModel):

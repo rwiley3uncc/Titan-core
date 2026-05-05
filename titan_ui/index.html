@@ -490,6 +490,44 @@ textarea {
   color: var(--muted);
 }
 
+.plan-panel {
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.plan-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--header);
+}
+
+.plan-meta {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.plan-summary {
+  margin-top: 10px;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.plan-actions {
+  margin-top: 14px;
+}
+
+.plan-actions-header {
+  margin-bottom: 10px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .action-card {
   border: 1px solid #dbe4f0;
   border-radius: 12px;
@@ -893,6 +931,7 @@ textarea {
     let latestSitrepPayload = null;
     let recognition = null;
     let currentProposedActions = [];
+    let currentProposedPlan = null;
     let selectedDevFile = null;
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
     const VOICE_NAME_STORAGE_KEY = 'titan_voice_name';
@@ -964,6 +1003,7 @@ textarea {
       chat.innerHTML = '';
       appendChatMessage('TITAN', INITIAL_TITAN_GREETING);
       currentProposedActions = [];
+      currentProposedPlan = null;
       renderActions([]);
       document.getElementById('msg').value = '';
       clearDevFile();
@@ -1237,6 +1277,14 @@ textarea {
       return normalized;
     }
 
+    function normalizePlan(plan) {
+      if (!plan || typeof plan !== 'object') return null;
+      return {
+        ...plan,
+        actions: Array.isArray(plan.actions) ? plan.actions.map(normalizeAction) : [],
+      };
+    }
+
     function isFinalActionStatus(status) {
       return status === 'executed' || status === 'cancelled' || status === 'failed';
     }
@@ -1248,6 +1296,11 @@ textarea {
 
     function findActionById(actionId) {
       return currentProposedActions.find(action => action.action_id === actionId) || null;
+    }
+
+    function syncPlanActions() {
+      if (!currentProposedPlan || !Array.isArray(currentProposedPlan.actions)) return;
+      currentProposedPlan.actions = currentProposedPlan.actions.map(action => findActionById(action.action_id) || action);
     }
 
     function formatActionStatus(status) {
@@ -1282,6 +1335,11 @@ textarea {
         return { label: 'Low confidence', className: 'low' };
       }
       return null;
+    }
+
+    function formatPlanCreatedAt(createdAt) {
+      if (typeof createdAt !== 'number') return '';
+      return new Date(createdAt * 1000).toLocaleString();
     }
 
     function renderCalendarSources() {
@@ -1858,97 +1916,146 @@ textarea {
       modal.setAttribute('aria-hidden', 'true');
     }
 
+    function renderActionCard(action, index) {
+      const card = document.createElement('div');
+      card.className = 'action-card is-' + action.status;
+      card.dataset.actionId = action.action_id || '';
+
+      const header = document.createElement('div');
+      header.className = 'action-card-header';
+
+      const title = document.createElement('div');
+      title.className = 'action-card-title';
+      title.textContent = action.type || `action_${index + 1}`;
+
+      const risk = document.createElement('div');
+      risk.className = 'action-risk';
+      risk.textContent = 'Risk: Low';
+
+      header.appendChild(title);
+      header.appendChild(risk);
+      card.appendChild(header);
+
+      const text = document.createElement('div');
+      text.className = 'action-text';
+      text.textContent = action.label || action.type || 'Unknown action';
+      card.appendChild(text);
+
+      const meta = document.createElement('div');
+      meta.className = 'action-meta';
+      const metaParts = ['Requires Approval'];
+      if (action.app) metaParts.push('app: ' + action.app);
+      if (action.args && action.args.note) metaParts.push(action.args.note);
+      if (action.action_id) metaParts.push('id: ' + action.action_id);
+      const createdLabel = formatActionCreatedAt(action.created_at);
+      if (createdLabel) metaParts.push('created: ' + createdLabel);
+      meta.textContent = metaParts.join(' | ');
+      card.appendChild(meta);
+
+      const details = document.createElement('div');
+      details.className = 'action-details';
+      details.textContent =
+        `Confidence: ${actionConfidencePercent(action)}%\n` +
+        `Reason: ${action.reason || 'No reason provided.'}`;
+      details.style.whiteSpace = 'pre-line';
+      card.appendChild(details);
+
+      const confidenceHint = actionConfidenceHint(action);
+      if (confidenceHint) {
+        const hint = document.createElement('div');
+        hint.className = 'action-confidence-hint ' + confidenceHint.className;
+        hint.textContent = confidenceHint.label;
+        card.appendChild(hint);
+      }
+
+      const actionsRow = document.createElement('div');
+      actionsRow.className = 'action-card-actions';
+
+      if (!isFinalActionStatus(action.status)) {
+        const approveBtn = document.createElement('button');
+        approveBtn.type = 'button';
+        approveBtn.textContent = 'Approve';
+        approveBtn.disabled = action.status === 'approved';
+        approveBtn.onclick = () => approveAction(action.action_id);
+        actionsRow.appendChild(approveBtn);
+      }
+
+      if (!isFinalActionStatus(action.status)) {
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.onclick = () => cancelAction(action.action_id);
+        actionsRow.appendChild(cancelBtn);
+      }
+
+      card.appendChild(actionsRow);
+
+      const status = document.createElement('div');
+      status.className = 'action-status status-' + action.status;
+      status.textContent = 'Status: ' + formatActionStatus(action.status);
+      card.appendChild(status);
+
+      return card;
+    }
+
     function renderActions(actions) {
       const el = document.getElementById('actions');
       currentProposedActions = Array.isArray(actions) ? actions.map(normalizeAction) : [];
+      syncPlanActions();
 
-      if (!currentProposedActions.length) {
+      if (!currentProposedActions.length && !currentProposedPlan) {
         el.innerHTML = '<div class="actions-empty">No proposed actions available.</div>';
         return;
       }
 
       el.innerHTML = '';
 
+      if (currentProposedPlan) {
+        const planPanel = document.createElement('div');
+        planPanel.className = 'plan-panel';
+
+        const planTitle = document.createElement('div');
+        planTitle.className = 'plan-title';
+        planTitle.textContent = 'Suggested Plan';
+        planPanel.appendChild(planTitle);
+
+        const planMeta = document.createElement('div');
+        planMeta.className = 'plan-meta';
+        const planMetaParts = [];
+        if (currentProposedPlan.plan_id) planMetaParts.push('id: ' + currentProposedPlan.plan_id);
+        const planCreatedLabel = formatPlanCreatedAt(currentProposedPlan.created_at);
+        if (planCreatedLabel) planMetaParts.push('created: ' + planCreatedLabel);
+        planMeta.textContent = planMetaParts.join(' | ');
+        planPanel.appendChild(planMeta);
+
+        const planSummary = document.createElement('div');
+        planSummary.className = 'plan-summary';
+        planSummary.textContent = currentProposedPlan.summary || 'No plan summary provided.';
+        planPanel.appendChild(planSummary);
+
+        const planActions = document.createElement('div');
+        planActions.className = 'plan-actions';
+
+        const planActionsHeader = document.createElement('div');
+        planActionsHeader.className = 'plan-actions-header';
+        planActionsHeader.textContent = 'Planned Actions';
+        planActions.appendChild(planActionsHeader);
+
+        currentProposedPlan.actions.forEach((action, index) => {
+          planActions.appendChild(renderActionCard(action, index));
+        });
+
+        planPanel.appendChild(planActions);
+        el.appendChild(planPanel);
+        return;
+      }
+
+      if (!currentProposedActions.length) {
+        return;
+      }
+
       currentProposedActions.forEach((action, index) => {
-        const card = document.createElement('div');
-        card.className = 'action-card is-' + action.status;
-        card.dataset.actionId = action.action_id || '';
-
-        const header = document.createElement('div');
-        header.className = 'action-card-header';
-
-        const title = document.createElement('div');
-        title.className = 'action-card-title';
-        title.textContent = action.type || `action_${index + 1}`;
-
-        const risk = document.createElement('div');
-        risk.className = 'action-risk';
-        risk.textContent = 'Risk: Low';
-
-        header.appendChild(title);
-        header.appendChild(risk);
-        card.appendChild(header);
-
-        const text = document.createElement('div');
-        text.className = 'action-text';
-        text.textContent = action.label || action.type || 'Unknown action';
-        card.appendChild(text);
-
-        const meta = document.createElement('div');
-        meta.className = 'action-meta';
-        const metaParts = ['Requires Approval'];
-        if (action.app) metaParts.push('app: ' + action.app);
-        if (action.args && action.args.note) metaParts.push(action.args.note);
-        if (action.action_id) metaParts.push('id: ' + action.action_id);
-        const createdLabel = formatActionCreatedAt(action.created_at);
-        if (createdLabel) metaParts.push('created: ' + createdLabel);
-        meta.textContent = metaParts.join(' | ');
-        card.appendChild(meta);
-
-        const details = document.createElement('div');
-        details.className = 'action-details';
-        details.textContent =
-          `Confidence: ${actionConfidencePercent(action)}%\n` +
-          `Reason: ${action.reason || 'No reason provided.'}`;
-        details.style.whiteSpace = 'pre-line';
-        card.appendChild(details);
-
-        const confidenceHint = actionConfidenceHint(action);
-        if (confidenceHint) {
-          const hint = document.createElement('div');
-          hint.className = 'action-confidence-hint ' + confidenceHint.className;
-          hint.textContent = confidenceHint.label;
-          card.appendChild(hint);
-        }
-
-        const actionsRow = document.createElement('div');
-        actionsRow.className = 'action-card-actions';
-
-        if (isExecutableAction(action) && !isFinalActionStatus(action.status)) {
-          const approveBtn = document.createElement('button');
-          approveBtn.type = 'button';
-          approveBtn.textContent = 'Approve';
-          approveBtn.disabled = action.status === 'approved';
-          approveBtn.onclick = () => executeAction(action.action_id);
-          actionsRow.appendChild(approveBtn);
-        }
-
-        if (!isFinalActionStatus(action.status)) {
-          const cancelBtn = document.createElement('button');
-          cancelBtn.type = 'button';
-          cancelBtn.textContent = 'Cancel';
-          cancelBtn.onclick = () => cancelAction(action.action_id);
-          actionsRow.appendChild(cancelBtn);
-        }
-
-        card.appendChild(actionsRow);
-
-        const status = document.createElement('div');
-        status.className = 'action-status status-' + action.status;
-        status.textContent = 'Status: ' + formatActionStatus(action.status);
-        card.appendChild(status);
-
-        el.appendChild(card);
+        el.appendChild(renderActionCard(action, index));
       });
     }
 
@@ -1987,6 +2094,28 @@ textarea {
       renderActions(currentProposedActions);
     }
 
+    async function approveAction(actionId) {
+      const action = findActionById(actionId);
+      if (!action || isFinalActionStatus(action.status)) {
+        return;
+      }
+
+      if (isExecutableAction(action)) {
+        await executeAction(actionId);
+        return;
+      }
+
+      setActionStatus(action, 'approved');
+      renderActions(currentProposedActions);
+      try {
+        await postClientActionStatus(action, 'approved', 'approved by user');
+      } catch (error) {
+        setActionStatus(action, 'failed');
+        renderActions(currentProposedActions);
+        appendChatMessage('TITAN', error.message || 'Failed to record approval for that action.');
+      }
+    }
+
     async function sendMsg() {
       const input = document.getElementById('msg');
       const text = input.value.trim();
@@ -2013,6 +2142,7 @@ textarea {
 
         if (!response.ok) {
           appendChatMessage('TITAN', 'Backend error: ' + response.status);
+          currentProposedPlan = null;
           renderActions([]);
           updateHeaderStatus('error');
           return;
@@ -2020,11 +2150,13 @@ textarea {
 
         const data = await response.json();
         appendConversationText('TITAN', data.reply || 'No reply returned.');
+        currentProposedPlan = normalizePlan(data.proposed_plan);
         renderActions(data.proposed_actions || []);
         updateHeaderStatus();
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Error contacting backend.');
+        currentProposedPlan = null;
         renderActions([]);
         updateHeaderStatus('error');
       }

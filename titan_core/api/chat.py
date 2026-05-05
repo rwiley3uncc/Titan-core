@@ -1239,29 +1239,26 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     # an approved source to ground the answer.
     if is_personal_assistant_mode(mode) and route_used == "verified_knowledge":
         details = get_verified_source_details(clean_text, verified_context)
+        attempted_lookup = False
         if not has_verified_source_for_topic(clean_text, verified_context):
             # Personal Assistant may use verified web only through the
             # controlled trusted-domain retrieval layer.
-            logger.info("[verified_web] attempted=%s route=%s", web_allowed, route_used)
-            verified_web = build_verified_web_context(clean_text) if web_allowed else None
+            attempted_lookup = web_allowed
+            logger.info("[verified_web] attempted=%s route=%s", attempted_lookup, route_used)
+            verified_web = build_verified_web_context(clean_text) if attempted_lookup else None
             if verified_web is not None:
                 logger.info("[verified_web] context_result=hit")
                 verified_context["verified_web"] = verified_web
                 details = get_verified_source_details(clean_text, verified_context)
-            elif is_current_fact_request(clean_text):
-                logger.info("[verified_web] context_result=miss")
-                return _finalize_with_metadata(
-                    clean_text,
-                    ChatResponse(reply=missing_verified_source_reply(clean_text), proposed_actions=[]),
-                    route_used="verified_knowledge",
-                    source_status="missing_verified_source",
-                    source_names=[],
-                    confidence="low",
-                )
             else:
                 logger.info("[verified_web] context_result=miss")
 
         if not has_verified_source_for_topic(clean_text, verified_context):
+            logger.info(
+                "[verified_web] refusal path reached, web_allowed=%s, attempted_lookup=%s",
+                web_allowed,
+                attempted_lookup,
+            )
             return _finalize_with_metadata(
                 clean_text,
                 ChatResponse(reply=missing_verified_source_reply(clean_text), proposed_actions=[]),

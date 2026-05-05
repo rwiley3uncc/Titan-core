@@ -444,7 +444,7 @@ class ChatRoutingTests(unittest.TestCase):
 
         self.assertGreater(official_score, wikipedia_score)
         self.assertGreaterEqual(official_score, 55)
-        self.assertGreaterEqual(wikipedia_score, 55)
+        self.assertLessEqual(wikipedia_score, 80)
 
     def test_weak_blog_with_short_snippet_fails_threshold(self) -> None:
         query = "who is the ceo of openai"

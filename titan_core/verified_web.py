@@ -113,39 +113,40 @@ def score_source(source: VerifiedWebSource, query: str) -> int:
     query_lower = (query or "").lower()
     query_tokens = _tokenize_query(query)
     query_entities = _query_entities(query)
+    is_secondary_source = any(_matches_domain(domain, reputable) for reputable in REPUTABLE_REFERENCE_DOMAINS)
 
     trust_class_score = 0
     matched_official_entity = False
     for entity in query_entities:
         if any(_matches_domain(domain, official_domain) for official_domain in OFFICIAL_ENTITY_DOMAINS[entity]):
-            trust_class_score = max(trust_class_score, 70)
+            trust_class_score = max(trust_class_score, 60)
             matched_official_entity = True
 
     for suffix in HIGH_TRUST_PUBLIC_SUFFIXES:
         bare_suffix = suffix[1:]
         if domain == bare_suffix or domain.endswith(suffix):
-            trust_class_score = max(trust_class_score, 52)
+            trust_class_score = max(trust_class_score, 40)
 
-    if any(_matches_domain(domain, reputable) for reputable in REPUTABLE_REFERENCE_DOMAINS):
-        trust_class_score = max(trust_class_score, 45)
+    if is_secondary_source:
+        trust_class_score = max(trust_class_score, 25)
 
     for trusted in TRUSTED_DOMAINS:
         trusted = trusted.lower()
         if trusted.startswith("."):
             bare_suffix = trusted[1:]
             if domain == bare_suffix or domain.endswith(f".{bare_suffix}"):
-                trust_class_score = max(trust_class_score, 52)
+                trust_class_score = max(trust_class_score, 40)
         elif _matches_domain(domain, trusted):
-            trust_class_score = max(trust_class_score, 50)
+            trust_class_score = max(trust_class_score, 45 if not matched_official_entity else trust_class_score)
 
     score += trust_class_score
 
     if len(source.extracted_text) > 120:
         score += 10
     elif len(source.extracted_text) < 40:
-        score -= 18
+        score -= 5 if matched_official_entity or trust_class_score >= 45 else 18
     elif len(source.extracted_text) < 80:
-        score -= 8
+        score -= 3 if matched_official_entity or trust_class_score >= 45 else 8
 
     if query_entities and any(entity in title or entity in text for entity in query_entities):
         score += 10
@@ -165,7 +166,10 @@ def score_source(source: VerifiedWebSource, query: str) -> int:
     if trust_class_score < 45 and len(source.extracted_text) < 120:
         score -= 10
 
-    return max(0, min(score, 100))
+    score = max(0, min(score, 100))
+    if is_secondary_source:
+        score = min(score, 80)
+    return score
 
 
 def fetch_trusted_page_text(url: str) -> str | None:

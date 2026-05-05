@@ -53,9 +53,9 @@ body {
 /* CONTAINER */
 
 .container {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 14px 16px 12px;
+  max-width: 100%;
+  margin: 0;
+  padding: 10px 12px 10px;
 
   height: calc(100vh - 74px);
   overflow: hidden;
@@ -134,7 +134,7 @@ button {
 
 .dashboard {
   display: grid;
-  grid-template-columns: 1.25fr 1fr;
+  grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
   gap: 12px;
 
   height: calc(100% - 58px);
@@ -151,6 +151,10 @@ button {
 
   height: 100%;
   min-height: 0;
+}
+
+.left-column {
+  overflow: hidden;
 }
 
 /* PANELS */
@@ -252,9 +256,10 @@ button {
 /* CHAT */
 
 #chat {
-  min-height: 260px;
-  height: clamp(260px, 38vh, 430px);
-  max-height: 430px;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
+  flex: 1;
   overflow-y: auto;
 
   background: #fafafa;
@@ -934,6 +939,48 @@ textarea {
   min-height: 0;
 }
 
+.conversation-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.conversation-panel textarea {
+  flex: 0 0 auto;
+}
+
+/* TEMP VIEWPORT MARKERS: remove this entire CSS block and the matching HTML block below after layout testing */
+.viewport-marker {
+  position: fixed;
+  z-index: 9999;
+  padding: 4px 6px;
+  background: rgba(220, 38, 38, 0.92);
+  color: #fff;
+  border-radius: 6px;
+  font: 700 11px/1 Arial, sans-serif;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.viewport-marker.tl {
+  top: 4px;
+  left: 4px;
+}
+
+.viewport-marker.tr {
+  top: 4px;
+  right: 4px;
+}
+
+.viewport-marker.bl {
+  bottom: 4px;
+  left: 4px;
+}
+
+.viewport-marker.br {
+  right: 4px;
+  bottom: 4px;
+}
+
 @media (max-width: 1100px) {
   .dashboard {
     grid-template-columns: 1fr;
@@ -943,6 +990,10 @@ textarea {
 
   .container {
     height: calc(100vh - 74px);
+  }
+
+  .left-column {
+    overflow: visible;
   }
 
   .grid-two {
@@ -1009,6 +1060,12 @@ textarea {
 </style>
 </head>
 <body>
+  <!-- TEMP VIEWPORT MARKERS: remove this entire HTML block and the matching CSS block above after layout testing -->
+  <div class="viewport-marker tl">TL</div>
+  <div class="viewport-marker tr">TR</div>
+  <div class="viewport-marker bl">BL</div>
+  <div class="viewport-marker br">BR</div>
+
   <div class="header">
     <h1>Titan</h1>
     <div id="headerStatus" class="sub">Personal Assistant | Online</div>
@@ -1073,7 +1130,7 @@ textarea {
       </div>
 
       <div class="right-column">
-        <div class="panel">
+        <div class="panel conversation-panel">
           <h3>Conversation</h3>
           <div id="chat"></div>
           <div id="activeModeLabel" class="active-mode">Active Mode: Personal Assistant</div>

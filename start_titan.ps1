@@ -9,7 +9,7 @@ if (-not $repoRoot) {
 
 Set-Location $repoRoot
 
-$uiUrl = "http://127.0.0.1:8000/ui/index.html?fresh=30"
+$uiUrl = "http://127.0.0.1:8000/ui/index.html"
 
 # CHANGE THIS if your Ubuntu web server command is different
 $wslDistro = "Ubuntu"

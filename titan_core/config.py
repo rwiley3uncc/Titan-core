@@ -24,10 +24,17 @@ def is_verified_web_enabled() -> bool:
 
 
 def get_search_provider() -> str:
-    return str(os.getenv("TITAN_SEARCH_PROVIDER", "")).strip().lower()
+    provider = str(os.getenv("TITAN_SEARCH_PROVIDER", "")).strip().lower()
+    return "brave" if provider == "brave" else ""
+
+
+def get_brave_api_key() -> str:
+    return str(os.getenv("TITAN_SEARCH_API_KEY", "")).strip()
 
 
 def get_searxng_url() -> str:
+    if get_search_provider() == "brave":
+        return ""
     return str(os.getenv("TITAN_SEARXNG_URL", "")).strip()
 
 
@@ -40,13 +47,13 @@ class TitanSettings:
     owner_username: str = os.getenv("TITAN_OWNER_USERNAME", "ron")
     verified_web_enabled: bool = is_verified_web_enabled()
     search_provider: str | None = (
-        os.getenv("TITAN_SEARCH_PROVIDER") or None
+        get_search_provider() or None
     )
     search_api_key: str | None = (
-        os.getenv("TITAN_SEARCH_API_KEY") or None
+        get_brave_api_key() or None
     )
     searxng_url: str | None = (
-        os.getenv("TITAN_SEARXNG_URL") or None
+        get_searxng_url() or None
     )
 
     sitrep_time: str = os.getenv(

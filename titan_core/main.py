@@ -26,8 +26,7 @@ import titan_core.models
 
 from titan_core.config import (
     is_verified_web_enabled,
-    get_search_provider,
-    get_searxng_url
+    get_search_provider
 )
 
 app = FastAPI(
@@ -108,5 +107,4 @@ def debug_verified_web() -> dict:
     return {
         "env_enabled": is_verified_web_enabled(),
         "provider": get_search_provider(),
-        "searxng_url": get_searxng_url(),
     }

@@ -23,7 +23,7 @@ from titan_core.agent_memory import get_behavior_patterns
 from titan_core.agent import AgentAction, AgentPlan, get_next_step_message, plan_agent_action, plan_agent_or_plan, validate_agent_action, validate_agent_plan
 from titan_core.brain import run_brain
 from titan_core.api.sitrep import build_sitrep_payload
-from titan_core.config import get_search_provider, get_searxng_url, is_verified_web_enabled, settings
+from titan_core.config import get_search_provider, is_verified_web_enabled, settings
 from titan_core.db import get_db
 from titan_core.models import MemoryItem, User
 from titan_core.rules import propose_actions
@@ -1132,7 +1132,6 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     mode = safe_mode(req)
     env_web_enabled = is_verified_web_enabled()
     provider = get_search_provider()
-    searxng_url = get_searxng_url()
     web_allowed = bool(req.web_enabled) and env_web_enabled
     now = datetime.now()
     planned_agent_result = plan_agent_or_plan(clean_text)
@@ -1245,12 +1244,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
 
     route_used = classify_route(clean_text, mode, personal_intent=personal_intent)
     logger.info(
-        "[verified_web] request.web_enabled=%s env_enabled=%s web_allowed=%s provider=%s url=%s route=%s",
+        "[verified_web] request.web_enabled=%s env_enabled=%s web_allowed=%s provider=%s route=%s",
         bool(req.web_enabled),
         env_web_enabled,
         web_allowed,
         provider or "<missing>",
-        searxng_url or "<missing>",
         route_used,
     )
     verified_context: dict[str, object] = {
@@ -1469,7 +1467,6 @@ def debug_verified_web() -> dict[str, object]:
     return {
         "env_enabled": is_verified_web_enabled(),
         "provider": get_search_provider(),
-        "searxng_url": get_searxng_url(),
     }
 
 

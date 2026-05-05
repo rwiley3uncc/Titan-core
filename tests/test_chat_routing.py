@@ -5,10 +5,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from titan_core.api import chat as chat_api
-from titan_core.config import get_search_provider, get_searxng_url, is_verified_web_enabled
+from titan_core.config import get_brave_api_key, get_search_provider, get_searxng_url, is_verified_web_enabled
 from titan_core.schemas import BrainOutput, ChatRequest
 from titan_core import verified_web
-from titan_core.verified_web import VerifiedWebResult, VerifiedWebSource, build_verified_web_context, filter_trusted_results, is_allowed_searxng_url, is_trusted_url
+from titan_core.verified_web import VerifiedWebResult, VerifiedWebSource, build_verified_web_context, filter_trusted_results, is_trusted_url
 
 
 FAKE_USER = SimpleNamespace(id=1, role="owner", username="owner")
@@ -246,7 +246,7 @@ class ChatRoutingTests(unittest.TestCase):
         provider_mock.assert_called_once()
         self.assertIn("verified current source", response.reply)
 
-    def test_current_fact_answers_when_mocked_searxng_returns_trusted_context(self) -> None:
+    def test_current_fact_answers_when_mocked_brave_returns_trusted_context(self) -> None:
         trusted_web = VerifiedWebResult(
             query="Who is the current CEO of OpenAI?",
             source_status="snippet_only",
@@ -304,46 +304,54 @@ class ChatRoutingTests(unittest.TestCase):
         with (
             patch("titan_core.verified_web.is_verified_web_enabled", return_value=True),
             patch("titan_core.verified_web.get_search_provider", return_value="brave"),
-            patch.object(verified_web.settings, "search_api_key", None),
+            patch("titan_core.verified_web.get_brave_api_key", return_value=""),
             patch("titan_core.verified_web.urlopen", side_effect=AssertionError("network should not be called")),
         ):
             result = build_verified_web_context("python latest")
         self.assertIsNone(result)
 
-    def test_searxng_provider_does_not_require_api_key(self) -> None:
-        payload = {"results": []}
+    def test_brave_provider_uses_expected_endpoint_shape(self) -> None:
+        payload = {"web": {"results": []}}
+        captured_request = {}
 
         class FakeResponse:
             def __enter__(self):
                 return self
             def __exit__(self, exc_type, exc, tb):
                 return False
+            @property
+            def headers(self):
+                return {}
             def read(self):
                 import json as _json
                 return _json.dumps(payload).encode("utf-8")
 
+        def fake_urlopen(request, timeout=5):
+            captured_request["url"] = request.full_url
+            captured_request["headers"] = dict(request.header_items())
+            return FakeResponse()
+
         with (
             patch("titan_core.verified_web.is_verified_web_enabled", return_value=True),
-            patch("titan_core.verified_web.get_search_provider", return_value="searxng"),
-            patch("titan_core.verified_web.get_searxng_url", return_value="http://127.0.0.1:8080"),
-            patch("titan_core.verified_web.urlopen", return_value=FakeResponse()),
-            patch.object(verified_web.settings, "search_api_key", None),
+            patch("titan_core.verified_web.get_search_provider", return_value="brave"),
+            patch("titan_core.verified_web.get_brave_api_key", return_value="test-key"),
+            patch("titan_core.verified_web.urlopen", side_effect=fake_urlopen),
         ):
             result = build_verified_web_context("python latest")
         self.assertIsNone(result)
+        self.assertIn("https://api.search.brave.com/res/v1/web/search?q=python+latest&count=10", captured_request["url"])
+        self.assertEqual(captured_request["headers"]["Accept"], "application/json")
+        self.assertEqual(captured_request["headers"]["Accept-encoding"], "gzip")
+        self.assertEqual(captured_request["headers"]["X-subscription-token"], "test-key")
 
-    def test_searxng_url_validation_works(self) -> None:
-        self.assertTrue(is_allowed_searxng_url("http://127.0.0.1:8080"))
-        self.assertTrue(is_allowed_searxng_url("http://localhost:8080"))
-        self.assertTrue(is_allowed_searxng_url("http://192.168.1.10:8080"))
-        self.assertFalse(is_allowed_searxng_url("https://search.example.com"))
-
-    def test_mocked_searxng_trusted_results_succeed(self) -> None:
+    def test_mocked_brave_trusted_results_succeed(self) -> None:
         payload = {
-            "results": [
-                {"title": "Python.org", "url": "https://www.python.org/downloads/", "content": "Latest Python release."},
-                {"title": "Blog", "url": "https://random-blog-example.com/post", "content": "Random."},
-            ]
+            "web": {
+                "results": [
+                    {"title": "Python.org", "url": "https://www.python.org/downloads/", "description": "Latest Python release."},
+                    {"title": "Blog", "url": "https://random-blog-example.com/post", "description": "Random."},
+                ]
+            }
         }
 
         class FakeResponse:
@@ -351,14 +359,17 @@ class ChatRoutingTests(unittest.TestCase):
                 return self
             def __exit__(self, exc_type, exc, tb):
                 return False
+            @property
+            def headers(self):
+                return {}
             def read(self):
                 import json as _json
                 return _json.dumps(payload).encode("utf-8")
 
         with (
             patch("titan_core.verified_web.is_verified_web_enabled", return_value=True),
-            patch("titan_core.verified_web.get_search_provider", return_value="searxng"),
-            patch("titan_core.verified_web.get_searxng_url", return_value="http://127.0.0.1:8080"),
+            patch("titan_core.verified_web.get_search_provider", return_value="brave"),
+            patch("titan_core.verified_web.get_brave_api_key", return_value="test-key"),
             patch("titan_core.verified_web.urlopen", return_value=FakeResponse()),
         ):
             result = build_verified_web_context("python latest")
@@ -366,11 +377,13 @@ class ChatRoutingTests(unittest.TestCase):
         assert result is not None
         self.assertEqual([source.title for source in result.sources], ["Python.org"])
 
-    def test_mocked_searxng_untrusted_results_fail_closed(self) -> None:
+    def test_mocked_brave_untrusted_results_fail_closed(self) -> None:
         payload = {
-            "results": [
-                {"title": "Blog", "url": "https://random-blog-example.com/post", "content": "Random."},
-            ]
+            "web": {
+                "results": [
+                    {"title": "Blog", "url": "https://random-blog-example.com/post", "description": "Random."},
+                ]
+            }
         }
 
         class FakeResponse:
@@ -378,14 +391,17 @@ class ChatRoutingTests(unittest.TestCase):
                 return self
             def __exit__(self, exc_type, exc, tb):
                 return False
+            @property
+            def headers(self):
+                return {}
             def read(self):
                 import json as _json
                 return _json.dumps(payload).encode("utf-8")
 
         with (
             patch("titan_core.verified_web.is_verified_web_enabled", return_value=True),
-            patch("titan_core.verified_web.get_search_provider", return_value="searxng"),
-            patch("titan_core.verified_web.get_searxng_url", return_value="http://127.0.0.1:8080"),
+            patch("titan_core.verified_web.get_search_provider", return_value="brave"),
+            patch("titan_core.verified_web.get_brave_api_key", return_value="test-key"),
             patch("titan_core.verified_web.urlopen", return_value=FakeResponse()),
         ):
             result = build_verified_web_context("python latest")
@@ -497,12 +513,14 @@ class ChatRoutingTests(unittest.TestCase):
     def test_dynamic_config_helpers(self) -> None:
         with patch.dict("os.environ", {
             "TITAN_VERIFIED_WEB_ENABLED": "yes",
-            "TITAN_SEARCH_PROVIDER": "searxng",
+            "TITAN_SEARCH_PROVIDER": "brave",
+            "TITAN_SEARCH_API_KEY": "abc123",
             "TITAN_SEARXNG_URL": "http://127.0.0.1:8888",
         }, clear=False):
             self.assertTrue(is_verified_web_enabled())
-            self.assertEqual(get_search_provider(), "searxng")
-            self.assertEqual(get_searxng_url(), "http://127.0.0.1:8888")
+            self.assertEqual(get_search_provider(), "brave")
+            self.assertEqual(get_brave_api_key(), "abc123")
+            self.assertEqual(get_searxng_url(), "")
 
     def test_development_assistant_still_provides_general_guidance(self) -> None:
         with (

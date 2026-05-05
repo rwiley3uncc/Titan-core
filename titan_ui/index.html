@@ -948,39 +948,6 @@ textarea {
   flex: 0 0 auto;
 }
 
-/* TEMP VIEWPORT MARKERS: remove this entire CSS block and the matching HTML block below after layout testing */
-.viewport-marker {
-  position: fixed;
-  z-index: 9999;
-  padding: 4px 6px;
-  background: rgba(220, 38, 38, 0.92);
-  color: #fff;
-  border-radius: 6px;
-  font: 700 11px/1 Arial, sans-serif;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-}
-
-.viewport-marker.tl {
-  top: 4px;
-  left: 4px;
-}
-
-.viewport-marker.tr {
-  top: 4px;
-  right: 4px;
-}
-
-.viewport-marker.bl {
-  bottom: 4px;
-  left: 4px;
-}
-
-.viewport-marker.br {
-  right: 4px;
-  bottom: 4px;
-}
-
 @media (max-width: 1100px) {
   .dashboard {
     grid-template-columns: 1fr;
@@ -1060,12 +1027,6 @@ textarea {
 </style>
 </head>
 <body>
-  <!-- TEMP VIEWPORT MARKERS: remove this entire HTML block and the matching CSS block above after layout testing -->
-  <div class="viewport-marker tl">TL</div>
-  <div class="viewport-marker tr">TR</div>
-  <div class="viewport-marker bl">BL</div>
-  <div class="viewport-marker br">BR</div>
-
   <div class="header">
     <h1>Titan</h1>
     <div id="headerStatus" class="sub">Personal Assistant | Online</div>

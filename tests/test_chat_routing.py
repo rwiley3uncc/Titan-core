@@ -60,7 +60,9 @@ class ChatRoutingTests(unittest.TestCase):
             )
 
         self.assertEqual(response.route_used, "personal_grounded")
-        self.assertEqual(response.source_status, "verified")
+        self.assertEqual(response.source_type, "sitrep")
+        self.assertEqual(response.source_status, "grounded")
+        self.assertEqual(response.source_label, "Source: Sitrep / Dashboard")
         self.assertIn("sitrep payload", response.source_names)
         self.assertIn("Based on the current sitrep/dashboard data", response.reply)
 
@@ -131,7 +133,9 @@ class ChatRoutingTests(unittest.TestCase):
             )
 
         self.assertEqual(response.route_used, "verified_knowledge")
-        self.assertEqual(response.source_status, "verified")
+        self.assertEqual(response.source_type, "uploaded_file")
+        self.assertEqual(response.source_status, "verified_source")
+        self.assertEqual(response.source_label, "Source: Uploaded Verified File")
         self.assertEqual(response.source_names, ["calculus_notes.md"])
         self.assertIn("Based on `calculus_notes.md`", response.reply)
 
@@ -243,8 +247,11 @@ class ChatRoutingTests(unittest.TestCase):
             )
 
         self.assertEqual(response.route_used, "verified_knowledge")
+        self.assertEqual(response.source_type, "verified_web")
         self.assertEqual(response.source_status, "snippet_only")
+        self.assertEqual(response.source_label, "Source: Verified Web (Snippet)")
         self.assertIn("Python.org", response.source_names)
+        self.assertIn("https://www.python.org/downloads/", response.source_urls)
         self.assertTrue(response.reply.startswith("Based on verified sources:"))
         self.assertIn("python.org", response.reply)
         self.assertIn("snippet_only", response.reply)
@@ -253,6 +260,12 @@ class ChatRoutingTests(unittest.TestCase):
         with open(".gitignore", "r", encoding="utf-8") as handle:
             content = handle.read()
         self.assertIn("data/action_log.json", content)
+
+    def test_frontend_source_label_is_optional(self) -> None:
+        with open("titan_ui/index.html", "r", encoding="utf-8") as handle:
+            content = handle.read()
+        self.assertIn("metadata && typeof metadata.source_label === 'string'", content)
+        self.assertIn("appendConversationText('TITAN', data.reply || 'No reply returned.', {", content)
 
     def test_development_assistant_still_provides_general_guidance(self) -> None:
         with (

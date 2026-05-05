@@ -55,8 +55,11 @@ class ChatResponse(BaseModel):
     reply: str
     proposed_actions: List[ProposedAction] = Field(default_factory=list)
     route_used: Optional[str] = None
+    source_type: Optional[str] = None
     source_status: Optional[str] = None
+    source_label: Optional[str] = None
     source_names: List[str] = Field(default_factory=list)
+    source_urls: List[str] = Field(default_factory=list)
     confidence: Optional[str] = None
     proposed_plan: Optional[ProposedPlan] = None
     replace_current_step: bool = False

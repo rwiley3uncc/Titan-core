@@ -573,19 +573,54 @@ def _finalize_with_metadata(
     user_message: str,
     response: ChatResponse,
     route_used: str | None = None,
+    source_type: str | None = None,
     source_status: str | None = None,
+    source_label: str | None = None,
     source_names: list[str] | None = None,
+    source_urls: list[str] | None = None,
     confidence: str | None = None,
 ) -> ChatResponse:
     if route_used is not None:
         response.route_used = route_used
+    if source_type is not None:
+        response.source_type = source_type
     if source_status is not None:
         response.source_status = source_status
+    if source_label is not None:
+        response.source_label = source_label
     if source_names is not None:
         response.source_names = source_names
+    if source_urls is not None:
+        response.source_urls = source_urls
     if confidence is not None:
         response.confidence = confidence
     return _finalize_chat_response(user_message, response)
+
+
+def _source_metadata(
+    *,
+    source_type: str | None,
+    source_status: str | None,
+    source_names: list[str] | None = None,
+    source_urls: list[str] | None = None,
+) -> dict[str, object]:
+    label = None
+    if source_type == "verified_web":
+        label = "Source: Verified Web" if source_status == "retrieved" else "Source: Verified Web (Snippet)"
+    elif source_type == "uploaded_file":
+        label = "Source: Uploaded Verified File"
+    elif source_type == "sitrep":
+        label = "Source: Sitrep / Dashboard"
+    elif source_type == "local_verified_source":
+        label = "Source: Local Verified Source"
+
+    return {
+        "source_type": source_type,
+        "source_status": source_status,
+        "source_label": label,
+        "source_names": source_names or [],
+        "source_urls": source_urls or [],
+    }
 
 
 def _format_verified_web_reply(verified_web: object, answer: str) -> str:
@@ -604,6 +639,17 @@ def _format_verified_web_reply(verified_web: object, answer: str) -> str:
     lines.append("Answer:")
     lines.append(answer.strip())
     return "\n".join(lines)
+
+
+def _verified_web_urls(verified_web: object | None) -> list[str]:
+    if verified_web is None:
+        return []
+    urls: list[str] = []
+    for source in getattr(verified_web, "sources", []) or []:
+        url = str(getattr(source, "url", "")).strip()
+        if url and url not in urls:
+            urls.append(url)
+    return urls
 
 
 def sanitize_uploaded_file(req: ChatRequest) -> tuple[str | None, str | None, str | None]:
@@ -1150,12 +1196,20 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         if intent:
             payload = build_sitrep_payload(weather_summary="")
             details = get_verified_source_details(clean_text, {"personal_intent": intent, "sitrep_payload": payload})
+            source_meta = _source_metadata(
+                source_type="sitrep",
+                source_status="grounded",
+                source_names=details.names,
+            )
             return _finalize_with_metadata(
                 clean_text,
                 personal_assistant_response(intent, payload),
                 route_used="personal_grounded",
-                source_status=details.status,
-                source_names=details.names,
+                source_type=source_meta["source_type"],
+                source_status=source_meta["source_status"],
+                source_label=source_meta["source_label"],
+                source_names=source_meta["source_names"],
+                source_urls=source_meta["source_urls"],
                 confidence=details.confidence,
             )
 
@@ -1215,6 +1269,26 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             db=db,
             user_id=user.id,
         )
+        source_type = None
+        source_status = details.status
+        source_urls: list[str] = []
+        if "verified_web_result" in details.source_types and verified_context.get("verified_web") is not None:
+            source_type = "verified_web"
+            source_status = str(getattr(verified_context.get("verified_web"), "source_status", details.status) or details.status)
+            source_urls = _verified_web_urls(verified_context.get("verified_web"))
+        elif "uploaded_file" in details.source_types:
+            source_type = "uploaded_file"
+            source_status = "verified_source"
+        elif "local_verified_doc" in details.source_types or "approved_registry_entry" in details.source_types:
+            source_type = "local_verified_source"
+            source_status = "verified_source"
+
+        source_meta = _source_metadata(
+            source_type=source_type,
+            source_status=source_status,
+            source_names=details.names,
+            source_urls=source_urls,
+        )
         return _finalize_with_metadata(
             clean_text,
             ChatResponse(
@@ -1224,8 +1298,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
                 proposed_actions=out.proposed_actions,
             ),
             route_used="verified_knowledge",
-            source_status=details.status,
-            source_names=details.names,
+            source_type=source_meta["source_type"],
+            source_status=source_meta["source_status"],
+            source_label=source_meta["source_label"],
+            source_names=source_meta["source_names"],
+            source_urls=source_meta["source_urls"],
             confidence=details.confidence,
         )
     if isinstance(planned_agent_result, AgentAction) and validate_agent_action(planned_agent_result):

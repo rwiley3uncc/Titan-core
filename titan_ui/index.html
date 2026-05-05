@@ -283,6 +283,19 @@ button {
   line-height: 1.45;
 }
 
+.message-source-label {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
 .message-user .message-label {
   color: #0f172a;
 }
@@ -1285,7 +1298,7 @@ textarea {
       clearDevFile();
     }
 
-    function appendChatMessage(sender, text) {
+    function appendChatMessage(sender, text, metadata = null) {
       const chat = document.getElementById('chat');
       const normalizedSender = String(sender || '').trim().toUpperCase() === 'YOU' ? 'YOU' : 'TITAN';
 
@@ -1302,26 +1315,33 @@ textarea {
 
       row.appendChild(label);
       row.appendChild(body);
+      if (normalizedSender === 'TITAN' && metadata && typeof metadata.source_label === 'string' && metadata.source_label.trim()) {
+        const sourceLabel = document.createElement('div');
+        sourceLabel.className = 'message-source-label';
+        sourceLabel.textContent = metadata.source_label.trim();
+        row.appendChild(sourceLabel);
+      }
       chat.appendChild(row);
       chat.scrollTop = chat.scrollHeight;
     }
 
-    function appendConversationText(defaultSender, text) {
+    function appendConversationText(defaultSender, text, metadata = null) {
       const messageText = String(text || '').trim();
 
       if (!messageText) {
-        appendChatMessage(defaultSender, '');
+        appendChatMessage(defaultSender, '', metadata);
         return;
       }
 
       const speakerMatches = messageText.match(/\b(?:YOU|TITAN):/g) || [];
       if (speakerMatches.length <= 1) {
-        appendChatMessage(defaultSender, messageText);
+        appendChatMessage(defaultSender, messageText, metadata);
         return;
       }
 
       const parts = messageText.split(/(YOU:|TITAN:)/);
       let currentSender = null;
+      let pendingMetadata = metadata;
 
       parts.forEach(part => {
         const token = String(part || '').trim();
@@ -1332,7 +1352,8 @@ textarea {
           return;
         }
 
-        appendChatMessage(currentSender || defaultSender, token);
+        appendChatMessage(currentSender || defaultSender, token, pendingMetadata);
+        pendingMetadata = null;
       });
     }
 
@@ -2889,7 +2910,9 @@ textarea {
         }
 
         const data = await response.json();
-        appendConversationText('TITAN', data.reply || 'No reply returned.');
+        appendConversationText('TITAN', data.reply || 'No reply returned.', {
+          source_label: data.source_label || '',
+        });
         if (data.replace_current_step) {
           const replaced = await applyChatBasedReplacement(text);
           if (replaced) {

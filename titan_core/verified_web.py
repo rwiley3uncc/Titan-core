@@ -41,6 +41,19 @@ class VerifiedWebResult:
     confidence: str
 
 
+def fetch_trusted_page_text(url: str) -> str | None:
+    # TODO: Implement lightweight trusted page retrieval for allowlisted
+    # pages only. Keep it read-only, short-timeout, and fail closed.
+    _ = url
+    return None
+
+
+def extract_readable_text(html: str) -> str:
+    # TODO: Replace this placeholder with a minimal standard-library
+    # extraction pass when full page retrieval is enabled.
+    return html
+
+
 def is_trusted_url(url: str) -> bool:
     parsed = urlparse((url or "").strip())
     if parsed.scheme.lower() != "https":
@@ -167,6 +180,8 @@ def build_verified_web_context(
         ).strip()
         if not url or not snippet:
             continue
+        # TODO: Prefer trusted retrieved page text over provider snippets
+        # after fetch_trusted_page_text() is implemented.
         sources.append(
             VerifiedWebSource(
                 title=title,

@@ -558,6 +558,37 @@ textarea {
   font-size: 13px;
 }
 
+.action-details {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.action-confidence-hint {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.action-confidence-hint.high {
+  color: #166534;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.action-confidence-hint.low {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #fcd34d;
+}
+
 .action-card-actions {
   display: flex;
   gap: 10px;
@@ -1237,6 +1268,22 @@ textarea {
         || action.type === 'read_sitrep';
     }
 
+    function actionConfidencePercent(action) {
+      const value = typeof action.confidence === 'number' ? action.confidence : 0;
+      return Math.max(0, Math.min(100, Math.round(value * 100)));
+    }
+
+    function actionConfidenceHint(action) {
+      const value = typeof action.confidence === 'number' ? action.confidence : 0;
+      if (value >= 0.9) {
+        return { label: 'High confidence', className: 'high' };
+      }
+      if (value < 0.6) {
+        return { label: 'Low confidence', className: 'low' };
+      }
+      return null;
+    }
+
     function renderCalendarSources() {
       const el = document.getElementById('calendarSourcesList');
       if (!el) return;
@@ -1857,6 +1904,22 @@ textarea {
         if (createdLabel) metaParts.push('created: ' + createdLabel);
         meta.textContent = metaParts.join(' | ');
         card.appendChild(meta);
+
+        const details = document.createElement('div');
+        details.className = 'action-details';
+        details.textContent =
+          `Confidence: ${actionConfidencePercent(action)}%\n` +
+          `Reason: ${action.reason || 'No reason provided.'}`;
+        details.style.whiteSpace = 'pre-line';
+        card.appendChild(details);
+
+        const confidenceHint = actionConfidenceHint(action);
+        if (confidenceHint) {
+          const hint = document.createElement('div');
+          hint.className = 'action-confidence-hint ' + confidenceHint.className;
+          hint.textContent = confidenceHint.label;
+          card.appendChild(hint);
+        }
 
         const actionsRow = document.createElement('div');
         actionsRow.className = 'action-card-actions';

@@ -16,6 +16,8 @@ class ProposedAction(BaseModel):
     action_id: Optional[str] = None
     created_at: Optional[float] = None
     status: str = "pending"
+    confidence: Optional[float] = None
+    reason: str = ""
     args: Dict[str, Any] = Field(default_factory=dict)
 
 

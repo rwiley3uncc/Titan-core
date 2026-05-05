@@ -440,6 +440,8 @@ def _agent_action_to_proposed_action(action: AgentAction) -> ProposedAction:
         action_id=action.action_id,
         created_at=action.created_at,
         status=action.status,
+        confidence=action.confidence,
+        reason=action.reason,
         args=args,
     )
 

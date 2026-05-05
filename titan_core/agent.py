@@ -26,6 +26,8 @@ class AgentAction:
     action_id: str = field(default_factory=lambda: str(uuid4()))
     created_at: float = field(default_factory=time.time)
     status: str = "pending"
+    confidence: float = 0.0
+    reason: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
     requires_approval: bool = True
 
@@ -44,6 +46,29 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
+def _matches_any(normalized: str, phrases: tuple[str, ...]) -> bool:
+    return any(phrase in normalized for phrase in phrases)
+
+
+def _build_agent_action(
+    *,
+    name: str,
+    description: str,
+    payload: dict[str, Any],
+    confidence: float,
+    reason: str,
+) -> AgentAction | None:
+    if confidence < 0.5:
+        return None
+    return AgentAction(
+        name=name,
+        description=description,
+        confidence=confidence,
+        reason=reason,
+        payload=payload,
+    )
+
+
 def plan_agent_action(user_message: str) -> AgentAction | None:
     """
     First-pass keyword planner for safe action proposals only.
@@ -53,33 +78,117 @@ def plan_agent_action(user_message: str) -> AgentAction | None:
     request matches a small safe allow-list.
     """
     normalized = _normalize_text(user_message)
+    exact_vscode = ("open vscode", "launch vscode", "start vscode", "open vs code", "open visual studio code")
+    partial_vscode = ("can you open vscode", "could you open vscode", "please open vscode", "open vscode for me")
+    weak_vscode = ("maybe open something like vscode", "something like vscode", "vscode")
+    exact_edge = ("open edge", "launch edge", "start edge", "open microsoft edge")
+    partial_edge = ("can you open edge", "could you open edge", "please open edge", "open edge for me")
+    weak_edge = ("maybe open something like edge", "something like edge", "edge")
+    exact_refresh = ("refresh my sitrep", "refresh sitrep", "reload sitrep", "update sitrep")
+    partial_refresh = ("can you refresh my sitrep", "please refresh my sitrep", "refresh the sitrep")
+    weak_refresh = ("maybe refresh sitrep", "sitrep refresh", "sitrep")
+    exact_read = ("read my sitrep", "read sitrep", "speak sitrep", "say my sitrep")
+    partial_read = ("can you read my sitrep", "please read my sitrep", "read the sitrep aloud")
+    weak_read = ("maybe read sitrep", "sitrep aloud", "speak my sitrep")
 
-    if any(phrase in normalized for phrase in ("refresh my sitrep", "refresh sitrep", "reload sitrep", "update sitrep")):
-        return AgentAction(
+    if _matches_any(normalized, exact_refresh):
+        return _build_agent_action(
             name="refresh_sitrep",
             description="Refresh sitrep",
             payload={},
+            confidence=0.95,
+            reason="User directly requested to refresh the sitrep.",
+        )
+    if _matches_any(normalized, partial_refresh):
+        return _build_agent_action(
+            name="refresh_sitrep",
+            description="Refresh sitrep",
+            payload={},
+            confidence=0.85,
+            reason="User intent strongly suggests refreshing the sitrep.",
+        )
+    if _matches_any(normalized, weak_refresh):
+        return _build_agent_action(
+            name="refresh_sitrep",
+            description="Refresh sitrep",
+            payload={},
+            confidence=0.6,
+            reason="User mentioned the sitrep, but the refresh request is somewhat indirect.",
         )
 
-    if any(phrase in normalized for phrase in ("read my sitrep", "read sitrep", "speak sitrep", "say my sitrep")):
-        return AgentAction(
+    if _matches_any(normalized, exact_read):
+        return _build_agent_action(
             name="read_sitrep",
             description="Read current sitrep aloud",
             payload={},
+            confidence=0.95,
+            reason="User directly requested to read the sitrep aloud.",
+        )
+    if _matches_any(normalized, partial_read):
+        return _build_agent_action(
+            name="read_sitrep",
+            description="Read current sitrep aloud",
+            payload={},
+            confidence=0.85,
+            reason="User intent strongly suggests reading the sitrep aloud.",
+        )
+    if _matches_any(normalized, weak_read):
+        return _build_agent_action(
+            name="read_sitrep",
+            description="Read current sitrep aloud",
+            payload={},
+            confidence=0.6,
+            reason="User mentioned having the sitrep read aloud, but intent is somewhat uncertain.",
         )
 
-    if any(phrase in normalized for phrase in ("open vscode", "launch vscode", "start vscode", "open vs code", "open visual studio code")):
-        return AgentAction(
+    if _matches_any(normalized, exact_vscode):
+        return _build_agent_action(
             name="open_vscode",
             description="Open VS Code",
             payload={"app": "vscode"},
+            confidence=0.95,
+            reason="User directly requested to open VS Code.",
+        )
+    if _matches_any(normalized, partial_vscode):
+        return _build_agent_action(
+            name="open_vscode",
+            description="Open VS Code",
+            payload={"app": "vscode"},
+            confidence=0.85,
+            reason="User intent strongly suggests opening VS Code.",
+        )
+    if _matches_any(normalized, weak_vscode):
+        return _build_agent_action(
+            name="open_vscode",
+            description="Open VS Code",
+            payload={"app": "vscode"},
+            confidence=0.6,
+            reason="User mentioned VS Code but intent is uncertain.",
         )
 
-    if any(phrase in normalized for phrase in ("open edge", "launch edge", "start edge", "open microsoft edge")):
-        return AgentAction(
+    if _matches_any(normalized, exact_edge):
+        return _build_agent_action(
             name="open_edge",
             description="Open Microsoft Edge",
             payload={"app": "edge"},
+            confidence=0.95,
+            reason="User directly requested to open Microsoft Edge.",
+        )
+    if _matches_any(normalized, partial_edge):
+        return _build_agent_action(
+            name="open_edge",
+            description="Open Microsoft Edge",
+            payload={"app": "edge"},
+            confidence=0.85,
+            reason="User intent strongly suggests opening Microsoft Edge.",
+        )
+    if _matches_any(normalized, weak_edge):
+        return _build_agent_action(
+            name="open_edge",
+            description="Open Microsoft Edge",
+            payload={"app": "edge"},
+            confidence=0.6,
+            reason="User mentioned Edge but intent is uncertain.",
         )
 
     return None

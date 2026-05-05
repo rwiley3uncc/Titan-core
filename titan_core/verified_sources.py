@@ -15,14 +15,22 @@ APPROVED_SOURCE_TYPES = {
 }
 SOURCE_CONFIDENCE_LABELS = ("low", "medium", "high")
 
-PERSONAL_VERIFIED_SOURCE_REQUIRED_REPLY = (
-    "I don't have enough verified information to answer that yet. "
-    "Add a course document, approved source, or verified reference, and I can help from that."
-)
-PERSONAL_VERIFIED_WEB_REQUIRED_REPLY = (
-    "I don't have enough verified information to answer that yet. "
-    "Add a verified web source or enable verified lookup."
-)
+PERSONAL_VERIFIED_SOURCE_REQUIRED_REPLY = """I don't have a verified source for that topic yet.
+
+You can:
+- upload your course notes or textbook
+- add an approved source
+- enable verified web lookup
+
+Then I can help using trusted information."""
+PERSONAL_VERIFIED_WEB_REQUIRED_REPLY = """I don't have a verified current source for that yet.
+
+You can:
+- enable verified web lookup
+- add an approved web source
+- upload a trusted reference
+
+Then I can answer from verified information."""
 
 PERSONAL_GROUNDED_INTENTS = {
     "schedule_today",
@@ -65,6 +73,10 @@ def _looks_like_current_fact_request(message: str) -> bool:
         "news",
     )
     return any(hint in lowered for hint in hints)
+
+
+def is_current_fact_request(message: str) -> bool:
+    return _looks_like_current_fact_request(message)
 
 
 def _sitrep_source_context(payload: dict[str, Any]) -> str:
@@ -136,6 +148,27 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
             f"{entry_content}"
         )
 
+    verified_web = context.get("verified_web")
+    if verified_web:
+        web_sources = getattr(verified_web, "sources", []) or []
+        source_lines: list[str] = []
+        for source in web_sources:
+            title = str(getattr(source, "title", "Verified web source")).strip()
+            url = str(getattr(source, "url", "")).strip()
+            snippet = str(getattr(source, "extracted_text", "")).strip()
+            if not url or not snippet:
+                continue
+            names.append(title)
+            source_types.append("verified_web_result")
+            source_lines.append(
+                f"- {title} ({url}): {snippet}"
+            )
+        if source_lines:
+            context_texts.append(
+                "Verified web sources:\n"
+                + "\n".join(source_lines)
+            )
+
     deduped_names: list[str] = []
     for name in names:
         if name not in deduped_names:
@@ -144,6 +177,8 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
     confidence = "low"
     if "uploaded_file" in source_types or "sitrep_payload" in source_types:
         confidence = "high"
+    elif "verified_web_result" in source_types:
+        confidence = "medium"
     elif source_types:
         confidence = "medium"
 

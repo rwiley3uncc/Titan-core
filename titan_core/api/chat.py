@@ -28,10 +28,12 @@ from titan_core.models import MemoryItem, User
 from titan_core.rules import propose_actions
 from titan_core.schemas import BrainInput, ChatMessage, ChatRequest, ChatResponse, ProposedAction, ProposedPlan, TaskRecord
 from titan_core.task_store import create_task, list_tasks, reschedule_task, update_task_status
+from titan_core.verified_web import build_verified_web_context
 from titan_core.verified_sources import (
     get_verified_source_context,
     get_verified_source_details,
     has_verified_source_for_topic,
+    is_current_fact_request,
     missing_verified_source_reply,
 )
 
@@ -584,6 +586,19 @@ def _finalize_with_metadata(
     if confidence is not None:
         response.confidence = confidence
     return _finalize_chat_response(user_message, response)
+
+
+def _format_verified_web_reply(source_names: list[str], answer: str) -> str:
+    unique_names: list[str] = []
+    for name in source_names:
+        if name not in unique_names:
+            unique_names.append(name)
+    lines = ["Based on verified sources:"]
+    lines.extend(f"- {name}" for name in unique_names[:3])
+    lines.append("")
+    lines.append("Answer:")
+    lines.append(answer.strip())
+    return "\n".join(lines)
 
 
 def sanitize_uploaded_file(req: ChatRequest) -> tuple[str | None, str | None, str | None]:
@@ -1151,6 +1166,23 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     if is_personal_assistant_mode(mode) and route_used == "verified_knowledge":
         details = get_verified_source_details(clean_text, verified_context)
         if not has_verified_source_for_topic(clean_text, verified_context):
+            # Personal Assistant may use verified web only through the
+            # controlled trusted-domain retrieval layer.
+            verified_web = build_verified_web_context(clean_text)
+            if verified_web is not None:
+                verified_context["verified_web"] = verified_web
+                details = get_verified_source_details(clean_text, verified_context)
+            elif is_current_fact_request(clean_text):
+                return _finalize_with_metadata(
+                    clean_text,
+                    ChatResponse(reply=missing_verified_source_reply(clean_text), proposed_actions=[]),
+                    route_used="verified_knowledge",
+                    source_status="missing_verified_source",
+                    source_names=[],
+                    confidence="low",
+                )
+
+        if not has_verified_source_for_topic(clean_text, verified_context):
             return _finalize_with_metadata(
                 clean_text,
                 ChatResponse(reply=missing_verified_source_reply(clean_text), proposed_actions=[]),
@@ -1180,7 +1212,12 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         )
         return _finalize_with_metadata(
             clean_text,
-            ChatResponse(reply=out.reply, proposed_actions=out.proposed_actions),
+            ChatResponse(
+                reply=_format_verified_web_reply(details.names, out.reply)
+                if "verified_web_result" in details.source_types
+                else out.reply,
+                proposed_actions=out.proposed_actions,
+            ),
             route_used="verified_knowledge",
             source_status=details.status,
             source_names=details.names,

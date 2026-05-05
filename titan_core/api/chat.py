@@ -978,20 +978,20 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         if isinstance(replacement_action, AgentAction) and validate_agent_action(replacement_action):
             proposed_action = _agent_action_to_proposed_action(replacement_action)
             return ChatResponse(
-                reply="Updating current step.",
+                reply="Step updated. Here's the new plan.",
                 proposed_actions=[],
                 replace_current_step=True,
                 new_action=proposed_action,
             )
     if req.active_plan and _is_skip_intent(clean_text):
         return ChatResponse(
-            reply="Skipping current step.",
+            reply="Step skipped. Moving to the next step.",
             proposed_actions=[],
             skip_current_step=True,
         )
     if req.active_plan and _is_approve_next_intent(clean_text):
         return ChatResponse(
-            reply="Approving next step.",
+            reply="Approving the next step.",
             proposed_actions=[],
             approve_next_step=True,
         )
@@ -1009,9 +1009,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             suggested_replacement = _agent_action_to_proposed_action(replacement_action)
             skip_count, approve_count = _suggestion_stats(current_pending_action, replacement_action.name)
             suggestion_confidence = min(1.0, (skip_count + approve_count) / 10)
-            suggestion_reason = f"Skipped {skip_count} times and approved {approve_count} times."
+            suggestion_reason = (
+                f"Skipped {skip_count} times and approved {replacement_action.name} {approve_count} times."
+            )
             return ChatResponse(
-                reply=f"You usually skip {current_pending_action}. Replace it with {replacement_action.name}?",
+                reply=f"You often skip {current_pending_action}. Replace it with {replacement_action.name}?",
                 proposed_actions=[],
                 suggest_replace=True,
                 target_action=current_pending_action,
@@ -1022,7 +1024,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     if isinstance(planned_agent_result, AgentPlan) and validate_agent_plan(planned_agent_result):
         proposed_plan = _agent_plan_to_proposed_plan(planned_agent_result)
         return _finalize_chat_response(clean_text, ChatResponse(
-            reply="Here’s a suggested plan for your day.",
+            reply="Here's a guided plan for your day.",
             proposed_actions=proposed_plan.actions,
             proposed_plan=proposed_plan,
         ))

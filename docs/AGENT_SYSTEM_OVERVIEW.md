@@ -1,55 +1,40 @@
 # Agent System Overview
 
 ## Overview
-Titan Agent is a safe planning layer that turns user requests into reviewable actions and multi-step plans. It helps Titan suggest useful next moves while keeping the human in control of execution.
+Titan Agent is a guided action layer for the Titan assistant. It turns user requests into reviewable actions and step-by-step plans so the user stays in control.
 
 ## Action System
-Titan proposes actions first and executes only after approval.
-
-- Proposed actions include ids, timestamps, confidence, reason, and lifecycle status.
-- `/api/chat` returns actions for the UI to review.
-- Execution stays inside the allow-listed backend path.
-- Unsupported or future-facing actions can still be proposed without being executed.
+- Titan proposes actions before anything runs.
+- Each proposed action includes an action id, timestamp, status, confidence score, and short reason.
+- The UI presents actions for approval, cancellation, or plan-based review.
+- Executable actions stay behind the backend allow-list.
 
 ## Plan System
-Titan can build structured plans for broader requests like “start my day.”
-
-- Plans include a `plan_id`, summary, current step index, next-step message, and action list.
-- Each action follows the same schema as standalone proposed actions.
-- Plans progress one step at a time through approve, skip, and replace flows.
-- Completion happens when no action remains in `pending`.
+- Titan can return a multi-step plan for broader requests such as "start my day."
+- Plans include a summary, ordered actions, the current step, and a next-step message.
+- Steps move forward one at a time through approve, skip, or replace flows.
+- A plan is complete when no steps remain in `pending`.
 
 ## Chat Control
-Titan supports natural language plan control through chat.
+- Natural language can guide the active plan.
+- Users can approve the next step, skip the current step, or replace it through normal chat phrasing.
+- Chat control routes into the same backend endpoints used by the manual plan buttons.
 
-- Approve phrases like `approve next`, `go ahead`, and `continue`
-- Skip phrases like `skip this step` and `move past this`
-- Replace phrases like `actually ... instead` and `replace`
-
-These chat controls only work when an active plan exists, and they route into the same backend step-control endpoints used by the manual UI buttons.
-
-## Memory + Learning
-Titan keeps append-only action history in `data/action_log.json`.
-
-- Proposed, approved, executed, skipped, replaced, cancelled, and failed events are logged
-- `agent_memory.py` summarizes recent actions and behavior patterns
-- Titan can identify `most_skipped`, `most_replaced`, and `most_approved`
-- The suggestion engine uses those patterns to recommend optional step replacements
+## Memory and Suggestions
+- Titan keeps append-only lifecycle history in `data/action_log.json`.
+- `agent_memory.py` summarizes recent behavior and common patterns such as most skipped or most approved actions.
+- When behavior history is strong enough, Titan can suggest an optional replacement for the current plan step.
+- Suggestions include a confidence score and a short explanation.
 
 ## Safety Model
-Titan is intentionally conservative.
-
 - No auto-execution of proposed actions
 - Allow-list only for executable actions
-- Full action lifecycle logging
-- Step changes like skip and replace stay user-triggered
-- Chat-based control detects intent but does not execute directly inside `/api/chat`
+- Approval required before execution
+- Full lifecycle logging for actions and plan changes
+- Plan progression is limited to one step at a time
 
 ## Limitations
-The current system is deliberately simple.
-
 - No autonomous execution
 - No unrestricted external system control
-- Pattern-based suggestions instead of ML or embeddings
-- Suggestions are optional and can be ignored
-- Behavior learning depends on available local action history
+- Suggestions are pattern-based, not ML-driven
+- Behavior-aware suggestions depend on available local history

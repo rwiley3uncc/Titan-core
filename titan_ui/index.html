@@ -451,8 +451,8 @@ textarea {
 }
 
 .modal {
-  width: min(680px, 100%);
-  max-height: 80vh;
+  width: min(760px, 100%);
+  max-height: 82vh;
   overflow: hidden;
   background: #fff;
   border: 1px solid var(--border);
@@ -478,6 +478,7 @@ textarea {
 .modal-body {
   padding: 18px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modal-title {
@@ -492,10 +493,10 @@ textarea {
 
 .plan-panel {
   margin-bottom: 16px;
-  padding: 14px;
+  padding: 16px;
   border: 1px solid #dbe4f0;
-  border-radius: 12px;
-  background: #f8fafc;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fafc 0%, #fdfefe 100%);
 }
 
 .plan-title {
@@ -506,8 +507,9 @@ textarea {
 
 .plan-meta {
   margin-top: 6px;
-  color: #64748b;
+  color: #475569;
   font-size: 13px;
+  line-height: 1.45;
 }
 
 .plan-summary {
@@ -518,25 +520,46 @@ textarea {
 }
 
 .plan-next-step {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #2563eb;
+  background: #eff6ff;
   color: #0f172a;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.5;
 }
 
+.plan-next-step.is-complete {
+  border-color: #bbf7d0;
+  border-left-color: #16a34a;
+  background: #f0fdf4;
+  color: #166534;
+}
+
 .plan-suggestion {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
   border: 1px solid #fcd34d;
   background: #fffbeb;
   color: #78350f;
   font-size: 14px;
   line-height: 1.5;
+}
+
+.plan-suggestion-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #92400e;
+}
+
+.plan-suggestion-line {
+  margin-top: 6px;
 }
 
 .plan-suggestion-meta {
@@ -558,7 +581,7 @@ textarea {
 }
 
 .plan-actions-header {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   color: #475569;
   font-size: 13px;
   font-weight: 700;
@@ -566,11 +589,15 @@ textarea {
 
 .plan-actions-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
 }
 
 .plan-replace-row {
@@ -589,9 +616,21 @@ textarea {
   color: var(--text);
 }
 
+.plan-replace-input:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
 .plan-current-step {
-  color: #2563eb;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -602,14 +641,14 @@ textarea {
 }
 
 .plan-panel.is-complete {
-  opacity: 0.82;
   border-color: #86efac;
+  background: linear-gradient(180deg, #f8fafc 0%, #f0fdf4 100%);
 }
 
 .action-card {
   border: 1px solid #dbe4f0;
   border-radius: 12px;
-  padding: 14px;
+  padding: 12px;
   background: #ffffff;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
   margin-bottom: 12px;
@@ -621,15 +660,27 @@ textarea {
 
 .action-card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .action-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.action-card-name {
   font-weight: 700;
   color: var(--header);
+}
+
+.action-card-description {
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .action-card.is-pending {
@@ -643,24 +694,24 @@ textarea {
 
 .action-card.is-approved {
   border-color: #93c5fd;
+  background: #f8fbff;
 }
 
 .action-card.is-executed {
   border-color: #86efac;
+  background: #f0fdf4;
 }
 
 .action-card.is-skipped {
   border-color: #cbd5e1;
   background: #f8fafc;
-  opacity: 0.82;
-  font-style: italic;
+  opacity: 0.88;
 }
 
 .action-card.is-replaced {
   border-color: #d1d5db;
   background: #f8fafc;
-  opacity: 0.78;
-  text-decoration: line-through;
+  opacity: 0.82;
 }
 
 .action-card.is-cancelled {
@@ -675,16 +726,15 @@ textarea {
 
 .action-risk {
   font-size: 12px;
-  color: #166534;
-  background: #dcfce7;
-  border: 1px solid #86efac;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
   padding: 3px 8px;
   border-radius: 999px;
 }
 
 .action-text {
-  line-height: 1.45;
-  color: #334155;
+  display: none;
 }
 
 .action-meta {
@@ -697,6 +747,36 @@ textarea {
   margin-top: 8px;
   font-size: 13px;
   color: #334155;
+  line-height: 1.45;
+}
+
+.action-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.action-card-metric {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.action-card-metric-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.action-card-metric-value {
+  font-size: 13px;
+  color: #1e293b;
   line-height: 1.45;
 }
 
@@ -765,6 +845,55 @@ textarea {
   color: #64748b;
 }
 
+.action-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.action-status-badge.status-pending {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.action-status-badge.status-approved {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.action-status-badge.status-executed {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.action-status-badge.status-skipped,
+.action-status-badge.status-replaced {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+.action-status-badge.status-cancelled,
+.action-status-badge.status-failed {
+  background: #fff1f2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.action-card.is-replaced .action-card-name,
+.action-card.is-replaced .action-card-description {
+  text-decoration: line-through;
+}
+
 .action-card-actions button:disabled {
   opacity: 0.6;
   cursor: default;
@@ -801,6 +930,34 @@ textarea {
   #chat {
     height: clamp(220px, 34vh, 340px);
     max-height: 340px;
+  }
+}
+
+@media (max-width: 780px) {
+  .modal-backdrop {
+    padding: 12px;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: 88vh;
+  }
+
+  .plan-actions-toolbar {
+    align-items: stretch;
+  }
+
+  .plan-replace-row {
+    width: 100%;
+  }
+
+  .plan-replace-input {
+    min-width: 0;
+    flex: 1 1 220px;
+  }
+
+  .action-card-metrics {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1038,6 +1195,7 @@ textarea {
     let currentProposedActions = [];
     let currentProposedPlan = null;
     let currentPlanSuggestion = null;
+    let planActionRequestInFlight = false;
     let selectedDevFile = null;
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
     const VOICE_NAME_STORAGE_KEY = 'titan_voice_name';
@@ -1060,6 +1218,15 @@ textarea {
       failed: 'Failed',
       skipped: 'Skipped',
       replaced: 'Replaced',
+    };
+    const ACTION_DISPLAY_NAMES = {
+      open_vscode: 'Open VS Code',
+      open_edge: 'Open Edge',
+      open_url: 'Open URL',
+      refresh_sitrep: 'Refresh Sitrep',
+      read_sitrep: 'Read Sitrep',
+      suggest_schedule: 'Suggest Schedule',
+      open_app: 'Open App',
     };
 
     function modeStatusPrefix() {
@@ -1438,6 +1605,38 @@ textarea {
 
     function formatActionStatus(status) {
       return ACTION_STATUS_LABELS[status] || 'Pending';
+    }
+
+    function formatActionName(actionOrName) {
+      const raw = typeof actionOrName === 'string'
+        ? actionOrName
+        : (actionOrName && (actionOrName.type || actionOrName.name)) || '';
+      if (!raw) return 'Unknown Action';
+      if (ACTION_DISPLAY_NAMES[raw]) return ACTION_DISPLAY_NAMES[raw];
+      return raw
+        .split('_')
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+    }
+
+    function actionDescription(action) {
+      if (action && typeof action.label === 'string' && action.label.trim()) {
+        return action.label.trim();
+      }
+      if (action && action.args && typeof action.args.note === 'string' && action.args.note.trim()) {
+        return action.args.note.trim();
+      }
+      return 'No description provided.';
+    }
+
+    function setPlanRequestInFlight(isBusy) {
+      const nextValue = !!isBusy;
+      if (planActionRequestInFlight === nextValue) return;
+      planActionRequestInFlight = nextValue;
+      if (currentProposedPlan) {
+        renderActions(currentProposedActions);
+      }
     }
 
     function formatActionCreatedAt(createdAt) {
@@ -2063,6 +2262,7 @@ textarea {
 
     function renderActionCard(action, index, options = {}) {
       const isCurrentStep = !!options.isCurrentStep;
+      const actionControlsDisabled = !!options.disableControls;
       const card = document.createElement('div');
       card.className = 'action-card is-' + action.status + (isCurrentStep ? ' is-current-step' : '');
       card.dataset.actionId = action.action_id || '';
@@ -2072,14 +2272,22 @@ textarea {
 
       const title = document.createElement('div');
       title.className = 'action-card-title';
-      title.textContent = action.type || `action_${index + 1}`;
+      const actionName = document.createElement('div');
+      actionName.className = 'action-card-name';
+      actionName.textContent = formatActionName(action);
+      title.appendChild(actionName);
 
-      const risk = document.createElement('div');
-      risk.className = 'action-risk';
-      risk.textContent = 'Risk: Low';
+      const actionSummary = document.createElement('div');
+      actionSummary.className = 'action-card-description';
+      actionSummary.textContent = actionDescription(action);
+      title.appendChild(actionSummary);
+
+      const statusBadge = document.createElement('div');
+      statusBadge.className = 'action-status-badge status-' + action.status;
+      statusBadge.textContent = formatActionStatus(action.status);
 
       header.appendChild(title);
-      header.appendChild(risk);
+      header.appendChild(statusBadge);
       card.appendChild(header);
 
       const text = document.createElement('div');
@@ -2089,22 +2297,29 @@ textarea {
 
       const meta = document.createElement('div');
       meta.className = 'action-meta';
-      const metaParts = ['Requires Approval'];
-      if (action.app) metaParts.push('app: ' + action.app);
-      if (action.args && action.args.note) metaParts.push(action.args.note);
-      if (action.action_id) metaParts.push('id: ' + action.action_id);
-      const createdLabel = formatActionCreatedAt(action.created_at);
-      if (createdLabel) metaParts.push('created: ' + createdLabel);
+      const metaParts = ['Requires approval'];
+      if (action.app) metaParts.push('App: ' + action.app);
       meta.textContent = metaParts.join(' | ');
       card.appendChild(meta);
 
-      const details = document.createElement('div');
-      details.className = 'action-details';
-      details.textContent =
-        `Confidence: ${actionConfidencePercent(action)}%\n` +
-        `Reason: ${action.reason || 'No reason provided.'}`;
-      details.style.whiteSpace = 'pre-line';
-      card.appendChild(details);
+      const metrics = document.createElement('div');
+      metrics.className = 'action-card-metrics';
+
+      const confidenceMetric = document.createElement('div');
+      confidenceMetric.className = 'action-card-metric';
+      confidenceMetric.innerHTML =
+        '<span class="action-card-metric-label">Confidence</span>' +
+        `<div class="action-card-metric-value">${actionConfidencePercent(action)}%</div>`;
+      metrics.appendChild(confidenceMetric);
+
+      const reasonMetric = document.createElement('div');
+      reasonMetric.className = 'action-card-metric';
+      reasonMetric.innerHTML =
+        '<span class="action-card-metric-label">Reason</span>' +
+        `<div class="action-card-metric-value">${action.reason || 'No reason provided.'}</div>`;
+      metrics.appendChild(reasonMetric);
+
+      card.appendChild(metrics);
 
       const confidenceHint = actionConfidenceHint(action);
       if (confidenceHint) {
@@ -2121,7 +2336,7 @@ textarea {
         const approveBtn = document.createElement('button');
         approveBtn.type = 'button';
         approveBtn.textContent = 'Approve';
-        approveBtn.disabled = action.status === 'approved';
+        approveBtn.disabled = action.status === 'approved' || actionControlsDisabled;
         approveBtn.onclick = () => approveAction(action.action_id);
         actionsRow.appendChild(approveBtn);
       }
@@ -2130,16 +2345,12 @@ textarea {
         const cancelBtn = document.createElement('button');
         cancelBtn.type = 'button';
         cancelBtn.textContent = 'Cancel';
+        cancelBtn.disabled = actionControlsDisabled;
         cancelBtn.onclick = () => cancelAction(action.action_id);
         actionsRow.appendChild(cancelBtn);
       }
 
       card.appendChild(actionsRow);
-
-      const status = document.createElement('div');
-      status.className = 'action-status status-' + action.status;
-      status.textContent = 'Status: ' + formatActionStatus(action.status);
-      card.appendChild(status);
 
       if (isCurrentStep) {
         const currentStep = document.createElement('div');
@@ -2167,6 +2378,8 @@ textarea {
       if (currentProposedPlan) {
         const planPanel = document.createElement('div');
         planPanel.className = 'plan-panel' + (currentProposedPlan.plan_complete ? ' is-complete' : '');
+        const nextPending = findNextPendingAction(currentProposedPlan.actions);
+        const controlsDisabled = !nextPending || !!currentProposedPlan.plan_complete || planActionRequestInFlight;
 
         const planTitle = document.createElement('div');
         planTitle.className = 'plan-title';
@@ -2175,11 +2388,9 @@ textarea {
 
         const planMeta = document.createElement('div');
         planMeta.className = 'plan-meta';
-        const planMetaParts = [];
-        if (currentProposedPlan.plan_id) planMetaParts.push('id: ' + currentProposedPlan.plan_id);
-        const planCreatedLabel = formatPlanCreatedAt(currentProposedPlan.created_at);
-        if (planCreatedLabel) planMetaParts.push('created: ' + planCreatedLabel);
-        planMeta.textContent = planMetaParts.join(' | ');
+        planMeta.textContent = currentProposedPlan.plan_complete
+          ? 'All steps have been reviewed.'
+          : 'Review one step at a time. Titan will only act after approval.';
         planPanel.appendChild(planMeta);
 
         const planSummary = document.createElement('div');
@@ -2189,14 +2400,39 @@ textarea {
 
         const planNextStep = document.createElement('div');
         planNextStep.id = 'plan-next-step';
-        planNextStep.className = 'plan-next-step';
+        planNextStep.className = 'plan-next-step' + (currentProposedPlan.plan_complete ? ' is-complete' : '');
         planNextStep.textContent = currentProposedPlan.next_step_message || 'Plan complete.';
         planPanel.appendChild(planNextStep);
 
-        if (currentPlanSuggestion && currentPlanSuggestion.suggest_replace) {
+        if (currentPlanSuggestion && currentPlanSuggestion.suggest_replace && nextPending) {
           const suggestion = document.createElement('div');
           suggestion.className = 'plan-suggestion';
-          suggestion.textContent = currentPlanSuggestion.reply || 'You usually skip this step. Replace it?';
+
+          const suggestionTitle = document.createElement('div');
+          suggestionTitle.className = 'plan-suggestion-title';
+          suggestionTitle.textContent = 'Titan noticed a pattern';
+          suggestion.appendChild(suggestionTitle);
+
+          const targetActionLabel = formatActionName(currentPlanSuggestion.target_action || '');
+          const suggestionLine = document.createElement('div');
+          suggestionLine.className = 'plan-suggestion-line';
+          suggestionLine.textContent = `You often skip ${targetActionLabel}.`;
+          suggestion.appendChild(suggestionLine);
+
+          const suggestedReplacementKey =
+            currentPlanSuggestion.suggested_replacement_action &&
+            (currentPlanSuggestion.suggested_replacement_action.type
+              || currentPlanSuggestion.suggested_replacement_action.name)
+              ? currentPlanSuggestion.suggested_replacement_action.type
+                || currentPlanSuggestion.suggested_replacement_action.name
+              : '';
+          const suggestedReplacementName = suggestedReplacementKey
+            ? formatActionName(suggestedReplacementKey)
+            : 'Suggested Action';
+          const suggestionReplacement = document.createElement('div');
+          suggestionReplacement.className = 'plan-suggestion-line';
+          suggestionReplacement.textContent = `Suggested replacement: ${suggestedReplacementName}`;
+          suggestion.appendChild(suggestionReplacement);
 
           const suggestionMeta = document.createElement('div');
           suggestionMeta.className = 'plan-suggestion-meta';
@@ -2214,18 +2450,15 @@ textarea {
 
           const replaceSuggestionBtn = document.createElement('button');
           replaceSuggestionBtn.type = 'button';
-          const suggestedReplacementName =
-            currentPlanSuggestion.suggested_replacement_action &&
-            currentPlanSuggestion.suggested_replacement_action.type
-              ? currentPlanSuggestion.suggested_replacement_action.type
-              : 'suggested_action';
           replaceSuggestionBtn.textContent = `Replace with ${suggestedReplacementName}`;
-          replaceSuggestionBtn.onclick = () => replaceNextPlanStep(suggestedReplacementName);
+          replaceSuggestionBtn.disabled = controlsDisabled;
+          replaceSuggestionBtn.onclick = () => replaceNextPlanStep(suggestedReplacementKey);
           suggestionActions.appendChild(replaceSuggestionBtn);
 
           const ignoreSuggestionBtn = document.createElement('button');
           ignoreSuggestionBtn.type = 'button';
           ignoreSuggestionBtn.textContent = 'Ignore';
+          ignoreSuggestionBtn.disabled = planActionRequestInFlight;
           ignoreSuggestionBtn.onclick = () => {
             clearPlanSuggestion();
             renderActions(currentProposedActions);
@@ -2243,28 +2476,27 @@ textarea {
 
         const planActionsHeader = document.createElement('div');
         planActionsHeader.className = 'plan-actions-header';
-        const nextPending = findNextPendingAction(currentProposedPlan.actions);
-        planActionsHeader.textContent = nextPending ? 'Planned Actions | One step ready' : 'Planned Actions | Complete';
+        planActionsHeader.textContent = currentProposedPlan.plan_complete ? 'Plan steps' : 'Plan controls';
         planToolbar.appendChild(planActionsHeader);
 
         if (currentProposedPlan.plan_complete) {
           const planComplete = document.createElement('div');
           planComplete.className = 'plan-complete';
-          planComplete.textContent = 'Plan complete';
+          planComplete.textContent = 'Plan complete.';
           planToolbar.appendChild(planComplete);
         }
 
         const approveNextBtn = document.createElement('button');
         approveNextBtn.type = 'button';
         approveNextBtn.textContent = 'Approve Next Step';
-        approveNextBtn.disabled = !nextPending || !!currentProposedPlan.plan_complete;
+        approveNextBtn.disabled = controlsDisabled;
         approveNextBtn.onclick = () => approveNextPlanStep();
         planToolbar.appendChild(approveNextBtn);
 
         const skipNextBtn = document.createElement('button');
         skipNextBtn.type = 'button';
         skipNextBtn.textContent = 'Skip Current Step';
-        skipNextBtn.disabled = !nextPending || !!currentProposedPlan.plan_complete;
+        skipNextBtn.disabled = controlsDisabled;
         skipNextBtn.onclick = () => skipNextPlanStep();
         planToolbar.appendChild(skipNextBtn);
 
@@ -2275,13 +2507,14 @@ textarea {
         replaceInput.type = 'text';
         replaceInput.id = 'plan-replace-input';
         replaceInput.className = 'plan-replace-input';
-        replaceInput.placeholder = 'Replace step with: open vscode';
+        replaceInput.placeholder = 'Enter a replacement, like open vscode';
+        replaceInput.disabled = controlsDisabled;
         replaceRow.appendChild(replaceInput);
 
         const replaceBtn = document.createElement('button');
         replaceBtn.type = 'button';
-        replaceBtn.textContent = 'Replace';
-        replaceBtn.disabled = !nextPending || !!currentProposedPlan.plan_complete;
+        replaceBtn.textContent = 'Replace Step';
+        replaceBtn.disabled = controlsDisabled;
         replaceBtn.onclick = () => replaceNextPlanStep();
         replaceRow.appendChild(replaceBtn);
         planToolbar.appendChild(replaceRow);
@@ -2290,6 +2523,7 @@ textarea {
         currentProposedPlan.actions.forEach((action, index) => {
           planActions.appendChild(renderActionCard(action, index, {
             isCurrentStep: !!nextPending && action.action_id === nextPending.action_id,
+            disableControls: planActionRequestInFlight,
           }));
         });
 
@@ -2303,7 +2537,9 @@ textarea {
       }
 
       currentProposedActions.forEach((action, index) => {
-        el.appendChild(renderActionCard(action, index));
+        el.appendChild(renderActionCard(action, index, {
+          disableControls: planActionRequestInFlight,
+        }));
       });
     }
 
@@ -2365,11 +2601,12 @@ textarea {
     }
 
     async function approveNextPlanStep() {
-      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete || planActionRequestInFlight) {
         return;
       }
 
       try {
+        setPlanRequestInFlight(true);
         const response = await fetch('/api/plan/approve-next', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2393,19 +2630,23 @@ textarea {
           currentProposedPlan.plan_complete = !!data.plan_complete;
           currentProposedPlan.next_step_message = String(data.next_step_message || '');
         }
+        clearPlanSuggestion();
         renderActions(updatedActions);
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Failed to approve the next plan step.');
+      } finally {
+        setPlanRequestInFlight(false);
       }
     }
 
     async function skipNextPlanStep() {
-      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete || planActionRequestInFlight) {
         return;
       }
 
       try {
+        setPlanRequestInFlight(true);
         const response = await fetch('/api/plan/skip-next', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2429,15 +2670,18 @@ textarea {
           currentProposedPlan.plan_complete = !!data.plan_complete;
           currentProposedPlan.next_step_message = String(data.next_step_message || '');
         }
+        clearPlanSuggestion();
         renderActions(updatedActions);
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Failed to skip the current plan step.');
+      } finally {
+        setPlanRequestInFlight(false);
       }
     }
 
     async function replaceNextPlanStep(prefilledMessage = '') {
-      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete || planActionRequestInFlight) {
         return;
       }
 
@@ -2449,6 +2693,7 @@ textarea {
       }
 
       try {
+        setPlanRequestInFlight(true);
         const response = await fetch('/api/plan/replace-next', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2478,15 +2723,18 @@ textarea {
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Failed to replace the current plan step.');
+      } finally {
+        setPlanRequestInFlight(false);
       }
     }
 
     async function applyChatBasedReplacement(userMessage) {
-      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete || planActionRequestInFlight) {
         return false;
       }
 
       try {
+        setPlanRequestInFlight(true);
         const response = await fetch('/api/plan/replace-next', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2511,21 +2759,25 @@ textarea {
           currentProposedPlan.plan_complete = !!data.plan_complete;
           currentProposedPlan.next_step_message = String(data.next_step_message || '');
         }
+        clearPlanSuggestion();
         renderActions(updatedActions);
         return true;
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Failed to update the current plan step.');
         return false;
+      } finally {
+        setPlanRequestInFlight(false);
       }
     }
 
     async function applyChatBasedSkip() {
-      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete || planActionRequestInFlight) {
         return false;
       }
 
       try {
+        setPlanRequestInFlight(true);
         const response = await fetch('/api/plan/skip-next', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2549,21 +2801,25 @@ textarea {
           currentProposedPlan.plan_complete = !!data.plan_complete;
           currentProposedPlan.next_step_message = String(data.next_step_message || '');
         }
+        clearPlanSuggestion();
         renderActions(updatedActions);
         return true;
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Failed to skip the current plan step.');
         return false;
+      } finally {
+        setPlanRequestInFlight(false);
       }
     }
 
     async function applyChatBasedApproveNext() {
-      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete || planActionRequestInFlight) {
         return false;
       }
 
       try {
+        setPlanRequestInFlight(true);
         const response = await fetch('/api/plan/approve-next', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2587,12 +2843,15 @@ textarea {
           currentProposedPlan.plan_complete = !!data.plan_complete;
           currentProposedPlan.next_step_message = String(data.next_step_message || '');
         }
+        clearPlanSuggestion();
         renderActions(updatedActions);
         return true;
       } catch (error) {
         console.error(error);
         appendChatMessage('TITAN', 'Failed to approve the next plan step.');
         return false;
+      } finally {
+        setPlanRequestInFlight(false);
       }
     }
 
@@ -2655,7 +2914,7 @@ textarea {
         currentPlanSuggestion = data.suggest_replace
           ? {
               suggest_replace: true,
-              reply: data.reply || 'You usually skip this step. Replace it?',
+              reply: data.reply || 'You often skip this step. Replace it?',
               target_action: data.target_action || '',
               suggestion_confidence: typeof data.suggestion_confidence === 'number' ? data.suggestion_confidence : null,
               suggestion_reason: data.suggestion_reason || '',

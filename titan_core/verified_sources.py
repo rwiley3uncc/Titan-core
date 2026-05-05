@@ -161,13 +161,14 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
             title = str(getattr(source, "title", "Verified web source")).strip()
             url = str(getattr(source, "url", "")).strip()
             snippet = str(getattr(source, "extracted_text", "")).strip()
+            score = int(getattr(source, "score", 0) or 0)
             if not url or not snippet:
                 continue
             names.append(title)
             source_types.append("verified_web_result")
             source_status = str(getattr(source, "source_status", "snippet_only")).strip() or "snippet_only"
             source_lines.append(
-                f"- {title} | domain: {getattr(source, 'domain', '')} | url: {url} | status: {source_status} | {snippet}"
+                f"- {title} | score: {score} | domain: {getattr(source, 'domain', '')} | url: {url} | status: {source_status} | snippet: {snippet}"
             )
         if source_lines:
             context_texts.append(
@@ -201,6 +202,9 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
 
 
 def has_verified_source_for_topic(message: str, context: dict[str, Any]) -> bool:
+    verified_web = context.get("verified_web")
+    if verified_web is not None and getattr(verified_web, "sources", None):
+        return bool(getattr(verified_web, "sources", []) or [])
     return bool(get_verified_source_details(message, context).names)
 
 

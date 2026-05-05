@@ -54,30 +54,52 @@ class VerifiedWebResult:
     sources: list[VerifiedWebSource]
     source_status: str
     confidence: str
+    failure_reason: str | None = None
 
 
 def score_source(source: VerifiedWebSource) -> int:
     score = 0
     domain = source.domain.lower()
+    title = source.title.lower()
     text = source.extracted_text.lower()
 
+    trusted_hit = False
     for trusted in TRUSTED_DOMAINS:
         trusted = trusted.lower()
         if trusted.startswith("."):
             suffix = trusted[1:]
             if domain == suffix or domain.endswith(f".{suffix}"):
-                score += 40
+                score += 45
+                trusted_hit = True
         elif domain == trusted or domain.endswith(f".{trusted}"):
-            score += 40
+            score += 50
+            trusted_hit = True
+
+    if any(domain == suffix or domain.endswith(f".{suffix}") for suffix in ("edu", "gov")):
+        score += 45
+        trusted_hit = True
+
+    if any(
+        reputable in domain
+        for reputable in ("wikipedia.org", "britannica.com", "reuters.com", "apnews.com", "bbc.com")
+    ):
+        score += 45
+        trusted_hit = True
 
     if len(source.extracted_text) > 120:
         score += 10
 
-    if "official" in text or "announced" in text or "current" in text:
+    if any(keyword in text or keyword in title for keyword in ("official", "announced", "current", "leadership")):
         score += 10
 
     if any(bad in domain for bad in ["reddit", "quora", "tiktok", "facebook", "pinterest"]):
-        score -= 40
+        score -= 45
+
+    if domain.startswith("www."):
+        domain = domain[4:]
+
+    if not trusted_hit and len(source.extracted_text) < 80:
+        score -= 10
 
     return max(0, min(score, 100))
 
@@ -123,7 +145,16 @@ def filter_trusted_results(results: list[dict]) -> list[dict]:
             continue
 
         url = str(result.get("url") or "").strip()
+
+        # Accept trusted domains
         if is_trusted_url(url):
+            trusted.append(result)
+            continue
+
+        # ALSO allow Wikipedia + major knowledge sites
+        domain = (urlparse(url).hostname or "").lower()
+
+        if any(x in domain for x in ["wikipedia.org", "britannica.com"]):
             trusted.append(result)
 
     return trusted
@@ -339,22 +370,21 @@ def build_verified_web_context(
 
     fetch_results = search_fn or _search_provider_results
     raw_results = fetch_results(query)
-    trusted_results = filter_trusted_results(raw_results)
 
     logger.info(
-        "[verified_web] provider=%s raw_results=%s trusted_results=%s",
+        "[verified_web] provider=%s raw_results=%s",
         provider or "<missing>",
         len(raw_results),
-        len(trusted_results),
     )
 
-    if not trusted_results:
-        logger.info("[verified_web] returning None reason=no_trusted_results")
+    if not raw_results:
+        logger.info("[verified_web] returning None reason=no_raw_results")
         return None
 
     sources: list[VerifiedWebSource] = []
+    candidate_count = 0
 
-    for result in trusted_results[:5]:
+    for result in raw_results[:8]:
         title = str(result.get("title") or "Verified source").strip()
         url = str(result.get("url") or "").strip()
         snippet = str(
@@ -367,6 +397,7 @@ def build_verified_web_context(
         if not url or not snippet:
             continue
 
+        candidate_count += 1
         source = VerifiedWebSource(
             title=title,
             url=url,
@@ -378,26 +409,42 @@ def build_verified_web_context(
         source.score = score_source(source)
 
         logger.info(
-            "[verified_web] scored source domain=%s score=%s title=%s",
+            "[verified_web] scored source domain=%s score=%s url=%s",
             source.domain,
             source.score,
-            source.title,
+            source.url,
         )
 
         if source.score >= MIN_SOURCE_SCORE:
             sources.append(source)
 
+    logger.info(
+        "[verified_web] candidate_count=%s usable_source_count=%s",
+        candidate_count,
+        len(sources),
+    )
+
     sources.sort(key=lambda item: item.score, reverse=True)
 
     if not sources:
-        logger.info("[verified_web] returning None reason=no_usable_sources_after_scoring")
+        if candidate_count > 0:
+            logger.info("[verified_web] returning diagnostic result reason=no_usable_sources_after_scoring")
+            return VerifiedWebResult(
+                query=query,
+                sources=[],
+                source_status="no_credible_sources",
+                confidence="low",
+                failure_reason="below_threshold",
+            )
+        logger.info("[verified_web] returning None reason=no_candidates")
         return None
 
-    logger.info("[verified_web] returning verified context sources=%s", len(sources))
+    logger.info("[verified_web] final usable source count=%s", len(sources[:3]))
 
     return VerifiedWebResult(
         query=query,
         sources=sources[:3],
         source_status="snippet_only",
         confidence="medium",
+        failure_reason=None,
     )

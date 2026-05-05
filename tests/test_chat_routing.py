@@ -168,7 +168,7 @@ class ChatRoutingTests(unittest.TestCase):
 
     def test_verified_web_disabled_makes_no_network_call(self) -> None:
         sentinel = Mock(side_effect=AssertionError("network should not be called"))
-        with patch.object(verified_web.settings, "verified_web_enabled", False):
+        with patch("titan_core.verified_web.is_verified_web_enabled", return_value=False):
             result = build_verified_web_context("python latest", search_fn=sentinel)
         self.assertIsNone(result)
         sentinel.assert_not_called()
@@ -192,7 +192,7 @@ class ChatRoutingTests(unittest.TestCase):
             patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
             patch.object(chat_api, "plan_agent_or_plan", return_value=None),
             patch.object(chat_api, "find_memory_match", return_value=None),
-            patch.object(chat_api.settings, "verified_web_enabled", False),
+            patch("titan_core.api.chat.is_verified_web_enabled", return_value=False),
             patch.object(chat_api, "build_verified_web_context", side_effect=AssertionError("provider should not be called")),
         ):
             response = chat_api.chat(
@@ -274,12 +274,36 @@ class ChatRoutingTests(unittest.TestCase):
                 db=self.db,
             )
         self.assertEqual(response.source_type, "verified_web")
-        self.assertIn("Based on verified sources:", response.reply)
+        self.assertIn("Based on verified web sources:", response.reply)
+        self.assertEqual(response.source_items[0]["title"], "OpenAI")
+
+    def test_current_fact_reports_below_threshold_sources_without_guessing(self) -> None:
+        weak_web = VerifiedWebResult(
+            query="Who is the current CEO of OpenAI?",
+            source_status="no_credible_sources",
+            confidence="low",
+            failure_reason="below_threshold",
+            sources=[],
+        )
+        with (
+            patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
+            patch.object(chat_api, "plan_agent_or_plan", return_value=None),
+            patch.object(chat_api, "find_memory_match", return_value=None),
+            patch("titan_core.api.chat.is_verified_web_enabled", return_value=True),
+            patch.object(chat_api, "build_verified_web_context", return_value=weak_web),
+        ):
+            response = chat_api.chat(
+                ChatRequest(message="Who is the current CEO of OpenAI?", mode="personal_general", web_enabled=True),
+                db=self.db,
+            )
+        self.assertEqual(response.source_type, "verified_web")
+        self.assertEqual(response.source_status, "no_credible_sources")
+        self.assertEqual(response.reply, "I found web results, but none met the credibility threshold, so I'm not using them.")
 
     def test_missing_provider_or_key_fails_closed(self) -> None:
         with (
-            patch.object(verified_web.settings, "verified_web_enabled", True),
-            patch.object(verified_web.settings, "search_provider", "brave"),
+            patch("titan_core.verified_web.is_verified_web_enabled", return_value=True),
+            patch("titan_core.verified_web.get_search_provider", return_value="brave"),
             patch.object(verified_web.settings, "search_api_key", None),
             patch("titan_core.verified_web.urlopen", side_effect=AssertionError("network should not be called")),
         ):
@@ -365,7 +389,10 @@ class ChatRoutingTests(unittest.TestCase):
             patch("titan_core.verified_web.urlopen", return_value=FakeResponse()),
         ):
             result = build_verified_web_context("python latest")
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.sources, [])
+        self.assertEqual(result.failure_reason, "below_threshold")
 
     def test_mocked_brave_provider_results_are_filtered(self) -> None:
         with patch("titan_core.verified_web.is_verified_web_enabled", return_value=True):
@@ -389,7 +416,9 @@ class ChatRoutingTests(unittest.TestCase):
                     {"title": "Blog", "url": "https://random-blog-example.com/post", "snippet": "Random post."},
                 ],
             )
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.failure_reason, "below_threshold")
 
     def test_personal_assistant_uses_mocked_verified_web_context_when_enabled(self) -> None:
         verified_web = VerifiedWebResult(
@@ -442,9 +471,9 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertEqual(response.source_label, "Source: Verified Web (Snippet)")
         self.assertIn("Python.org", response.source_names)
         self.assertIn("https://www.python.org/downloads/", response.source_urls)
-        self.assertTrue(response.reply.startswith("Based on verified sources:"))
+        self.assertTrue(response.reply.startswith("Based on verified web sources:"))
         self.assertIn("python.org", response.reply)
-        self.assertIn("snippet_only", response.reply)
+        self.assertIn("score", response.reply)
 
     def test_action_log_path_is_gitignored(self) -> None:
         with open(".gitignore", "r", encoding="utf-8") as handle:

@@ -580,6 +580,7 @@ def _finalize_with_metadata(
     source_label: str | None = None,
     source_names: list[str] | None = None,
     source_urls: list[str] | None = None,
+    source_items: list[dict[str, object]] | None = None,
     confidence: str | None = None,
 ) -> ChatResponse:
     if route_used is not None:
@@ -594,6 +595,8 @@ def _finalize_with_metadata(
         response.source_names = source_names
     if source_urls is not None:
         response.source_urls = source_urls
+    if source_items is not None:
+        response.source_items = source_items
     if confidence is not None:
         response.confidence = confidence
     return _finalize_chat_response(user_message, response)
@@ -605,6 +608,7 @@ def _source_metadata(
     source_status: str | None,
     source_names: list[str] | None = None,
     source_urls: list[str] | None = None,
+    source_items: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     label = None
     if source_type == "verified_web":
@@ -622,21 +626,21 @@ def _source_metadata(
         "source_label": label,
         "source_names": source_names or [],
         "source_urls": source_urls or [],
+        "source_items": source_items or [],
     }
 
 
 def _format_verified_web_reply(verified_web: object, answer: str) -> str:
-    lines = ["Based on verified sources:"]
+    lines = ["Based on verified web sources:", "", "Sources used:"]
     sources = getattr(verified_web, "sources", []) or []
     for source in sources[:3]:
         title = str(getattr(source, "title", "Verified source")).strip()
-        domain = str(getattr(source, "domain", "")).strip()
+        score = int(getattr(source, "score", 0) or 0)
         url = str(getattr(source, "url", "")).strip()
-        status = str(getattr(source, "source_status", "snippet_only")).strip() or "snippet_only"
         if url:
-            lines.append(f"- {title} | {domain} | {status} | {url}")
+            lines.append(f"- {title} | score {score} | {url}")
         else:
-            lines.append(f"- {title} | {domain} | {status}")
+            lines.append(f"- {title} | score {score}")
     lines.append("")
     lines.append("Answer:")
     lines.append(answer.strip())
@@ -652,6 +656,26 @@ def _verified_web_urls(verified_web: object | None) -> list[str]:
         if url and url not in urls:
             urls.append(url)
     return urls
+
+
+def _verified_web_source_items(verified_web: object | None) -> list[dict[str, object]]:
+    if verified_web is None:
+        return []
+    items: list[dict[str, object]] = []
+    for source in getattr(verified_web, "sources", []) or []:
+        title = str(getattr(source, "title", "Verified source")).strip()
+        url = str(getattr(source, "url", "")).strip()
+        score = int(getattr(source, "score", 0) or 0)
+        if not title or not url:
+            continue
+        items.append({"title": title, "url": url, "score": score})
+    return items
+
+
+def _missing_credible_web_source_reply(verified_web: object | None) -> str:
+    if verified_web is not None and str(getattr(verified_web, "failure_reason", "") or "") == "below_threshold":
+        return "I found web results, but none met the credibility threshold, so I'm not using them."
+    return "I couldn't find a sufficiently credible verified web source for that."
 
 
 def sanitize_uploaded_file(req: ChatRequest) -> tuple[str | None, str | None, str | None]:
@@ -1240,6 +1264,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     if is_personal_assistant_mode(mode) and route_used == "verified_knowledge":
         details = get_verified_source_details(clean_text, verified_context)
         attempted_lookup = False
+        verified_web = None
         if not has_verified_source_for_topic(clean_text, verified_context):
             # Personal Assistant may use verified web only through the
             # controlled trusted-domain retrieval layer.
@@ -1247,13 +1272,33 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             logger.info("[verified_web] attempted=%s route=%s", attempted_lookup, route_used)
             verified_web = build_verified_web_context(clean_text) if attempted_lookup else None
             if verified_web is not None:
-                logger.info("[verified_web] context_result=hit")
+                logger.info(
+                    "[verified_web] context_result=hit usable_sources=%s source_status=%s",
+                    len(getattr(verified_web, "sources", []) or []),
+                    str(getattr(verified_web, "source_status", "") or "<missing>"),
+                )
                 verified_context["verified_web"] = verified_web
                 details = get_verified_source_details(clean_text, verified_context)
             else:
                 logger.info("[verified_web] context_result=miss")
 
         if not has_verified_source_for_topic(clean_text, verified_context):
+            if verified_web is not None:
+                logger.info(
+                    "[verified_web] no usable sources after lookup reason=%s",
+                    str(getattr(verified_web, "failure_reason", "") or "unknown"),
+                )
+                return _finalize_with_metadata(
+                    clean_text,
+                    ChatResponse(reply=_missing_credible_web_source_reply(verified_web), proposed_actions=[]),
+                    route_used="verified_knowledge",
+                    source_type="verified_web",
+                    source_status=str(getattr(verified_web, "source_status", "missing_verified_source") or "missing_verified_source"),
+                    source_names=[],
+                    source_urls=[],
+                    source_items=[],
+                    confidence=str(getattr(verified_web, "confidence", "low") or "low"),
+                )
             logger.info(
                 "[verified_web] refusal path reached, web_allowed=%s, attempted_lookup=%s",
                 web_allowed,
@@ -1290,10 +1335,12 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         source_type = None
         source_status = details.status
         source_urls: list[str] = []
+        source_items: list[dict[str, object]] = []
         if "verified_web_result" in details.source_types and verified_context.get("verified_web") is not None:
             source_type = "verified_web"
             source_status = str(getattr(verified_context.get("verified_web"), "source_status", details.status) or details.status)
             source_urls = _verified_web_urls(verified_context.get("verified_web"))
+            source_items = _verified_web_source_items(verified_context.get("verified_web"))
         elif "uploaded_file" in details.source_types:
             source_type = "uploaded_file"
             source_status = "verified_source"
@@ -1306,6 +1353,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             source_status=source_status,
             source_names=details.names,
             source_urls=source_urls,
+            source_items=source_items,
         )
         return _finalize_with_metadata(
             clean_text,
@@ -1321,6 +1369,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             source_label=source_meta["source_label"],
             source_names=source_meta["source_names"],
             source_urls=source_meta["source_urls"],
+            source_items=source_items,
             confidence=details.confidence,
         )
     if isinstance(planned_agent_result, AgentAction) and validate_agent_action(planned_agent_result):

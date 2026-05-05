@@ -61,6 +61,7 @@ class ChatResponse(BaseModel):
     source_label: Optional[str] = None
     source_names: List[str] = Field(default_factory=list)
     source_urls: List[str] = Field(default_factory=list)
+    source_items: List[Dict[str, Any]] = Field(default_factory=list)
     confidence: Optional[str] = None
     proposed_plan: Optional[ProposedPlan] = None
     replace_current_step: bool = False

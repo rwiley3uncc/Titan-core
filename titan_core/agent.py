@@ -93,6 +93,39 @@ def plan_agent_action(user_message: str) -> AgentAction | None:
     request matches a small safe allow-list.
     """
     normalized = _normalize_text(user_message)
+
+    if normalized == "refresh_sitrep":
+        return _build_agent_action(
+            name="refresh_sitrep",
+            description="Refresh sitrep",
+            payload={},
+            confidence=0.95,
+            reason="Direct safe action id requested for refresh_sitrep.",
+        )
+    if normalized == "read_sitrep":
+        return _build_agent_action(
+            name="read_sitrep",
+            description="Read current sitrep aloud",
+            payload={},
+            confidence=0.95,
+            reason="Direct safe action id requested for read_sitrep.",
+        )
+    if normalized == "open_vscode":
+        return _build_agent_action(
+            name="open_vscode",
+            description="Open VS Code",
+            payload={"app": "vscode"},
+            confidence=0.95,
+            reason="Direct safe action id requested for open_vscode.",
+        )
+    if normalized == "open_edge":
+        return _build_agent_action(
+            name="open_edge",
+            description="Open Microsoft Edge",
+            payload={"app": "edge"},
+            confidence=0.95,
+            reason="Direct safe action id requested for open_edge.",
+        )
     exact_vscode = ("open vscode", "launch vscode", "start vscode", "open vs code", "open visual studio code")
     partial_vscode = ("can you open vscode", "could you open vscode", "please open vscode", "open vscode for me")
     weak_vscode = ("maybe open something like vscode", "something like vscode", "vscode")

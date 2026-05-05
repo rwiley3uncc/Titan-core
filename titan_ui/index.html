@@ -528,6 +528,24 @@ textarea {
   line-height: 1.5;
 }
 
+.plan-suggestion {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #78350f;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.plan-suggestion-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
 .plan-actions {
   margin-top: 14px;
 }
@@ -1012,6 +1030,7 @@ textarea {
     let recognition = null;
     let currentProposedActions = [];
     let currentProposedPlan = null;
+    let currentPlanSuggestion = null;
     let selectedDevFile = null;
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
     const VOICE_NAME_STORAGE_KEY = 'titan_voice_name';
@@ -1086,6 +1105,7 @@ textarea {
       appendChatMessage('TITAN', INITIAL_TITAN_GREETING);
       currentProposedActions = [];
       currentProposedPlan = null;
+      currentPlanSuggestion = null;
       renderActions([]);
       document.getElementById('msg').value = '';
       clearDevFile();
@@ -1380,6 +1400,10 @@ textarea {
         plan_complete: !!currentProposedPlan.plan_complete,
         actions: currentProposedPlan.actions,
       };
+    }
+
+    function clearPlanSuggestion() {
+      currentPlanSuggestion = null;
     }
 
     function isFinalActionStatus(status) {
@@ -2162,6 +2186,37 @@ textarea {
         planNextStep.textContent = currentProposedPlan.next_step_message || 'Plan complete.';
         planPanel.appendChild(planNextStep);
 
+        if (currentPlanSuggestion && currentPlanSuggestion.suggest_replace) {
+          const suggestion = document.createElement('div');
+          suggestion.className = 'plan-suggestion';
+          suggestion.textContent = currentPlanSuggestion.reply || 'You usually skip this step. Replace it?';
+
+          const suggestionActions = document.createElement('div');
+          suggestionActions.className = 'plan-suggestion-actions';
+
+          const replaceSuggestionBtn = document.createElement('button');
+          replaceSuggestionBtn.type = 'button';
+          const suggestedReplacementName =
+            currentPlanSuggestion.suggested_replacement_action &&
+            currentPlanSuggestion.suggested_replacement_action.type
+              ? currentPlanSuggestion.suggested_replacement_action.type
+              : 'suggested_action';
+          replaceSuggestionBtn.textContent = `Replace with ${suggestedReplacementName}`;
+          replaceSuggestionBtn.onclick = () => replaceNextPlanStep(suggestedReplacementName);
+          suggestionActions.appendChild(replaceSuggestionBtn);
+
+          const ignoreSuggestionBtn = document.createElement('button');
+          ignoreSuggestionBtn.type = 'button';
+          ignoreSuggestionBtn.textContent = 'Ignore';
+          ignoreSuggestionBtn.onclick = () => {
+            clearPlanSuggestion();
+            renderActions(currentProposedActions);
+          };
+          suggestionActions.appendChild(ignoreSuggestionBtn);
+          suggestion.appendChild(suggestionActions);
+          planPanel.appendChild(suggestion);
+        }
+
         const planActions = document.createElement('div');
         planActions.className = 'plan-actions';
 
@@ -2363,13 +2418,13 @@ textarea {
       }
     }
 
-    async function replaceNextPlanStep() {
+    async function replaceNextPlanStep(prefilledMessage = '') {
       if (!currentProposedPlan || currentProposedPlan.plan_complete) {
         return;
       }
 
       const input = document.getElementById('plan-replace-input');
-      const userMessage = input ? input.value.trim() : '';
+      const userMessage = prefilledMessage || (input ? input.value.trim() : '');
       if (!userMessage) {
         appendChatMessage('TITAN', 'Enter a replacement step before clicking Replace.');
         return;
@@ -2400,6 +2455,7 @@ textarea {
           currentProposedPlan.plan_complete = !!data.plan_complete;
           currentProposedPlan.next_step_message = String(data.next_step_message || '');
         }
+        clearPlanSuggestion();
         renderActions(updatedActions);
       } catch (error) {
         console.error(error);
@@ -2578,6 +2634,14 @@ textarea {
             return;
           }
         }
+        currentPlanSuggestion = data.suggest_replace
+          ? {
+              suggest_replace: true,
+              reply: data.reply || 'You usually skip this step. Replace it?',
+              target_action: data.target_action || '',
+              suggested_replacement_action: data.suggested_replacement_action || null,
+            }
+          : null;
         currentProposedPlan = normalizePlan(data.proposed_plan);
         renderActions(data.proposed_actions || []);
         updateHeaderStatus();
@@ -2585,6 +2649,7 @@ textarea {
         console.error(error);
         appendChatMessage('TITAN', 'Error contacting backend.');
         currentProposedPlan = null;
+        currentPlanSuggestion = null;
         renderActions([]);
         updateHeaderStatus('error');
       }

@@ -58,6 +58,9 @@ class ChatResponse(BaseModel):
     replace_current_step: bool = False
     skip_current_step: bool = False
     approve_next_step: bool = False
+    suggest_replace: bool = False
+    target_action: Optional[str] = None
+    suggested_replacement_action: Optional[Dict[str, Any]] = None
     new_action: Optional[ProposedAction] = None
 
 

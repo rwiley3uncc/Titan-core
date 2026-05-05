@@ -34,3 +34,24 @@ def get_action_summary() -> dict[str, Any]:
         "most_cancelled": cancelled_counts.most_common(1)[0][0] if cancelled_counts else "",
         "last_failure": last_failure,
     }
+
+
+def get_behavior_patterns() -> dict[str, Any]:
+    entries = load_action_log()
+    skipped_counts: Counter[str] = Counter()
+    replaced_counts: Counter[str] = Counter()
+    approved_counts: Counter[str] = Counter()
+
+    for entry in entries:
+        if entry.status == "skipped":
+            skipped_counts[entry.action_name] += 1
+        elif entry.status == "replaced":
+            replaced_counts[entry.action_name] += 1
+        elif entry.status == "approved":
+            approved_counts[entry.action_name] += 1
+
+    return {
+        "most_skipped": skipped_counts.most_common(1)[0][0] if skipped_counts else "",
+        "most_replaced": replaced_counts.most_common(1)[0][0] if replaced_counts else "",
+        "most_approved": approved_counts.most_common(1)[0][0] if approved_counts else "",
+    }

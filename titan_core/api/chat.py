@@ -18,7 +18,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from titan_core.action_log import log_action, make_action_log_entry
-from titan_core.agent import AgentAction, AgentPlan, get_next_step_message, plan_agent_or_plan, validate_agent_action, validate_agent_plan
+from titan_core.agent_memory import get_behavior_patterns
+from titan_core.agent import AgentAction, AgentPlan, get_next_step_message, plan_agent_action, plan_agent_or_plan, validate_agent_action, validate_agent_plan
 from titan_core.brain import run_brain
 from titan_core.api.sitrep import build_sitrep_payload
 from titan_core.config import settings
@@ -473,6 +474,18 @@ def _is_skip_intent(text: str) -> bool:
 def _is_approve_next_intent(text: str) -> bool:
     normalized = normalize_text(text)
     return any(token in normalized for token in APPROVE_NEXT_INTENT_TOKENS)
+
+
+def _active_plan_pending_action_type(active_plan: dict | None) -> str:
+    if not isinstance(active_plan, dict):
+        return ""
+    actions = active_plan.get("actions")
+    if not isinstance(actions, list):
+        return ""
+    for action in actions:
+        if isinstance(action, dict) and str(action.get("status") or "").strip().lower() == "pending":
+            return str(action.get("type") or action.get("action") or "")
+    return ""
 
 
 def _ensure_action_metadata(proposed: ProposedAction) -> ProposedAction:
@@ -971,6 +984,25 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             proposed_actions=[],
             approve_next_step=True,
         )
+    if req.active_plan:
+        current_pending_action = _active_plan_pending_action_type(req.active_plan)
+        behavior_patterns = get_behavior_patterns()
+        suggested_name = behavior_patterns.get("most_approved", "")
+        replacement_action = plan_agent_action(suggested_name) if suggested_name else None
+        if (
+            current_pending_action
+            and current_pending_action == behavior_patterns.get("most_skipped", "")
+            and replacement_action
+            and validate_agent_action(replacement_action)
+        ):
+            suggested_replacement = _agent_action_to_proposed_action(replacement_action)
+            return ChatResponse(
+                reply=f"You usually skip {current_pending_action}. Replace it with {replacement_action.name}?",
+                proposed_actions=[],
+                suggest_replace=True,
+                target_action=current_pending_action,
+                suggested_replacement_action=suggested_replacement.model_dump(),
+            )
     if isinstance(planned_agent_result, AgentPlan) and validate_agent_plan(planned_agent_result):
         proposed_plan = _agent_plan_to_proposed_plan(planned_agent_result)
         return _finalize_chat_response(clean_text, ChatResponse(

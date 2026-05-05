@@ -1229,11 +1229,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         searxng_url or "<missing>",
         route_used,
     )
-    verified_context = {
-        "personal_intent": personal_intent,
-        "file_name": file_name,
-        "file_content": file_content,
-    }
+    verified_context: dict[str, object] = {
+    "personal_intent": personal_intent,
+    "file_name": file_name,
+    "file_content": file_content,
+}
 
     # Personal Assistant mode must refuse general knowledge unless we have
     # an approved source to ground the answer.

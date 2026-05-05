@@ -48,12 +48,17 @@ class ChatRequest(BaseModel):
     mode: Optional[str] = "personal_general"
     file_name: Optional[str] = None
     file_content: Optional[str] = None
+    active_plan: Optional[Dict[str, Any]] = None
 
 
 class ChatResponse(BaseModel):
     reply: str
     proposed_actions: List[ProposedAction] = Field(default_factory=list)
     proposed_plan: Optional[ProposedPlan] = None
+    replace_current_step: bool = False
+    skip_current_step: bool = False
+    approve_next_step: bool = False
+    new_action: Optional[ProposedAction] = None
 
 
 class TaskRecord(BaseModel):

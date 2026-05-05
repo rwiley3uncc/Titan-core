@@ -1369,6 +1369,19 @@ textarea {
       };
     }
 
+    function activePlanPayload() {
+      if (!currentProposedPlan) return null;
+      return {
+        plan_id: currentProposedPlan.plan_id,
+        created_at: currentProposedPlan.created_at,
+        summary: currentProposedPlan.summary,
+        current_step_index: currentProposedPlan.current_step_index,
+        next_step_message: currentProposedPlan.next_step_message,
+        plan_complete: !!currentProposedPlan.plan_complete,
+        actions: currentProposedPlan.actions,
+      };
+    }
+
     function isFinalActionStatus(status) {
       return status === 'executed' || status === 'cancelled' || status === 'failed' || status === 'skipped' || status === 'replaced';
     }
@@ -2394,6 +2407,121 @@ textarea {
       }
     }
 
+    async function applyChatBasedReplacement(userMessage) {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+        return false;
+      }
+
+      try {
+        const response = await fetch('/api/plan/replace-next', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: currentProposedPlan.plan_id,
+            actions: currentProposedPlan.actions,
+            user_message: userMessage,
+          })
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          appendChatMessage('TITAN', detail || 'Failed to update the current plan step.');
+          return false;
+        }
+
+        const data = await response.json();
+        const updatedActions = Array.isArray(data.updated_actions) ? data.updated_actions.map(normalizeAction) : [];
+        currentProposedActions = updatedActions;
+        if (currentProposedPlan) {
+          currentProposedPlan.actions = updatedActions;
+          currentProposedPlan.plan_complete = !!data.plan_complete;
+          currentProposedPlan.next_step_message = String(data.next_step_message || '');
+        }
+        renderActions(updatedActions);
+        return true;
+      } catch (error) {
+        console.error(error);
+        appendChatMessage('TITAN', 'Failed to update the current plan step.');
+        return false;
+      }
+    }
+
+    async function applyChatBasedSkip() {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+        return false;
+      }
+
+      try {
+        const response = await fetch('/api/plan/skip-next', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: currentProposedPlan.plan_id,
+            actions: currentProposedPlan.actions,
+          })
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          appendChatMessage('TITAN', detail || 'Failed to skip the current plan step.');
+          return false;
+        }
+
+        const data = await response.json();
+        const updatedActions = Array.isArray(data.updated_actions) ? data.updated_actions.map(normalizeAction) : [];
+        currentProposedActions = updatedActions;
+        if (currentProposedPlan) {
+          currentProposedPlan.actions = updatedActions;
+          currentProposedPlan.plan_complete = !!data.plan_complete;
+          currentProposedPlan.next_step_message = String(data.next_step_message || '');
+        }
+        renderActions(updatedActions);
+        return true;
+      } catch (error) {
+        console.error(error);
+        appendChatMessage('TITAN', 'Failed to skip the current plan step.');
+        return false;
+      }
+    }
+
+    async function applyChatBasedApproveNext() {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
+        return false;
+      }
+
+      try {
+        const response = await fetch('/api/plan/approve-next', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: currentProposedPlan.plan_id,
+            actions: currentProposedPlan.actions,
+          })
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          appendChatMessage('TITAN', detail || 'Failed to approve the next plan step.');
+          return false;
+        }
+
+        const data = await response.json();
+        const updatedActions = Array.isArray(data.updated_actions) ? data.updated_actions.map(normalizeAction) : [];
+        currentProposedActions = updatedActions;
+        if (currentProposedPlan) {
+          currentProposedPlan.actions = updatedActions;
+          currentProposedPlan.plan_complete = !!data.plan_complete;
+          currentProposedPlan.next_step_message = String(data.next_step_message || '');
+        }
+        renderActions(updatedActions);
+        return true;
+      } catch (error) {
+        console.error(error);
+        appendChatMessage('TITAN', 'Failed to approve the next plan step.');
+        return false;
+      }
+    }
+
     async function sendMsg() {
       const input = document.getElementById('msg');
       const text = input.value.trim();
@@ -2415,6 +2543,7 @@ textarea {
             mode,
             file_name: selectedDevFile ? selectedDevFile.name : null,
             file_content: selectedDevFile ? selectedDevFile.content : null,
+            active_plan: activePlanPayload(),
           })
         });
 
@@ -2428,6 +2557,27 @@ textarea {
 
         const data = await response.json();
         appendConversationText('TITAN', data.reply || 'No reply returned.');
+        if (data.replace_current_step) {
+          const replaced = await applyChatBasedReplacement(text);
+          if (replaced) {
+            updateHeaderStatus();
+            return;
+          }
+        }
+        if (data.skip_current_step) {
+          const skipped = await applyChatBasedSkip();
+          if (skipped) {
+            updateHeaderStatus();
+            return;
+          }
+        }
+        if (data.approve_next_step) {
+          const approved = await applyChatBasedApproveNext();
+          if (approved) {
+            updateHeaderStatus();
+            return;
+          }
+        }
         currentProposedPlan = normalizePlan(data.proposed_plan);
         renderActions(data.proposed_actions || []);
         updateHeaderStatus();

@@ -29,6 +29,9 @@ from titan_core.schemas import BrainInput, ChatMessage, ChatRequest, ChatRespons
 from titan_core.task_store import create_task, list_tasks, reschedule_task, update_task_status
 
 router = APIRouter()
+REPLACEMENT_INTENT_TOKENS = ("instead", "actually", "do this instead", "replace")
+SKIP_INTENT_TOKENS = ("skip this step", "skip it", "skip current step", "skip this", "move past this")
+APPROVE_NEXT_INTENT_TOKENS = ("approve next", "approve this step", "go ahead", "do it", "run next step", "continue")
 
 MEMORY_SAVE_TRIGGERS = ("remember that", "remember this", "titan remember", "hey titan remember", "save this", "store this", "remember")
 QUESTION_STARTERS = ("what ", "where ", "when ", "why ", "how ", "who ", "which ", "do ", "does ", "did ", "is ", "are ", "can ", "could ", "would ", "should ")
@@ -455,6 +458,21 @@ def _agent_plan_to_proposed_plan(plan: AgentPlan) -> ProposedPlan:
         next_step_message=get_next_step_message(plan),
         actions=[_agent_action_to_proposed_action(action) for action in plan.actions],
     )
+
+
+def _is_replacement_intent(text: str) -> bool:
+    normalized = normalize_text(text)
+    return any(token in normalized for token in REPLACEMENT_INTENT_TOKENS)
+
+
+def _is_skip_intent(text: str) -> bool:
+    normalized = normalize_text(text)
+    return any(token in normalized for token in SKIP_INTENT_TOKENS)
+
+
+def _is_approve_next_intent(text: str) -> bool:
+    normalized = normalize_text(text)
+    return any(token in normalized for token in APPROVE_NEXT_INTENT_TOKENS)
 
 
 def _ensure_action_metadata(proposed: ProposedAction) -> ProposedAction:
@@ -931,6 +949,28 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     memory_match = find_memory_match(db, user.id, clean_text) if should_use_personal_memory(mode) else None
     if memory_match:
         return _finalize_chat_response(clean_text, ChatResponse(reply=answer_from_memory(clean_text, memory_match), proposed_actions=[]))
+    if req.active_plan and _is_replacement_intent(clean_text):
+        replacement_action = plan_agent_or_plan(clean_text)
+        if isinstance(replacement_action, AgentAction) and validate_agent_action(replacement_action):
+            proposed_action = _agent_action_to_proposed_action(replacement_action)
+            return ChatResponse(
+                reply="Updating current step.",
+                proposed_actions=[],
+                replace_current_step=True,
+                new_action=proposed_action,
+            )
+    if req.active_plan and _is_skip_intent(clean_text):
+        return ChatResponse(
+            reply="Skipping current step.",
+            proposed_actions=[],
+            skip_current_step=True,
+        )
+    if req.active_plan and _is_approve_next_intent(clean_text):
+        return ChatResponse(
+            reply="Approving next step.",
+            proposed_actions=[],
+            approve_next_step=True,
+        )
     if isinstance(planned_agent_result, AgentPlan) and validate_agent_plan(planned_agent_result):
         proposed_plan = _agent_plan_to_proposed_plan(planned_agent_result)
         return _finalize_chat_response(clean_text, ChatResponse(

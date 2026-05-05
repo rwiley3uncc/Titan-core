@@ -451,6 +451,7 @@ def _agent_plan_to_proposed_plan(plan: AgentPlan) -> ProposedPlan:
         plan_id=plan.plan_id,
         created_at=plan.created_at,
         summary=plan.summary,
+        current_step_index=plan.current_step_index,
         actions=[_agent_action_to_proposed_action(action) for action in plan.actions],
     )
 

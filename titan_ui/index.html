@@ -528,6 +528,21 @@ textarea {
   font-weight: 700;
 }
 
+.plan-actions-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.plan-current-step {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .action-card {
   border: 1px solid #dbe4f0;
   border-radius: 12px;
@@ -556,6 +571,11 @@ textarea {
 
 .action-card.is-pending {
   border-color: #cbd5e1;
+}
+
+.action-card.is-current-step {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12), 0 8px 20px rgba(15, 23, 42, 0.05);
 }
 
 .action-card.is-approved {
@@ -1303,6 +1323,11 @@ textarea {
       currentProposedPlan.actions = currentProposedPlan.actions.map(action => findActionById(action.action_id) || action);
     }
 
+    function findNextPendingAction(actions) {
+      const list = Array.isArray(actions) ? actions : [];
+      return list.find(action => action && action.status === 'pending') || null;
+    }
+
     function formatActionStatus(status) {
       return ACTION_STATUS_LABELS[status] || 'Pending';
     }
@@ -1340,6 +1365,14 @@ textarea {
     function formatPlanCreatedAt(createdAt) {
       if (typeof createdAt !== 'number') return '';
       return new Date(createdAt * 1000).toLocaleString();
+    }
+
+    function refreshPlanStepIndex() {
+      if (!currentProposedPlan || !Array.isArray(currentProposedPlan.actions)) return;
+      const nextPending = findNextPendingAction(currentProposedPlan.actions);
+      currentProposedPlan.current_step_index = nextPending
+        ? currentProposedPlan.actions.findIndex(action => action.action_id === nextPending.action_id)
+        : currentProposedPlan.actions.length;
     }
 
     function renderCalendarSources() {
@@ -1916,9 +1949,10 @@ textarea {
       modal.setAttribute('aria-hidden', 'true');
     }
 
-    function renderActionCard(action, index) {
+    function renderActionCard(action, index, options = {}) {
+      const isCurrentStep = !!options.isCurrentStep;
       const card = document.createElement('div');
-      card.className = 'action-card is-' + action.status;
+      card.className = 'action-card is-' + action.status + (isCurrentStep ? ' is-current-step' : '');
       card.dataset.actionId = action.action_id || '';
 
       const header = document.createElement('div');
@@ -1995,6 +2029,13 @@ textarea {
       status.textContent = 'Status: ' + formatActionStatus(action.status);
       card.appendChild(status);
 
+      if (isCurrentStep) {
+        const currentStep = document.createElement('div');
+        currentStep.className = 'plan-current-step';
+        currentStep.textContent = 'Current step';
+        card.appendChild(currentStep);
+      }
+
       return card;
     }
 
@@ -2002,6 +2043,7 @@ textarea {
       const el = document.getElementById('actions');
       currentProposedActions = Array.isArray(actions) ? actions.map(normalizeAction) : [];
       syncPlanActions();
+      refreshPlanStepIndex();
 
       if (!currentProposedActions.length && !currentProposedPlan) {
         el.innerHTML = '<div class="actions-empty">No proposed actions available.</div>';
@@ -2036,13 +2078,27 @@ textarea {
         const planActions = document.createElement('div');
         planActions.className = 'plan-actions';
 
+        const planToolbar = document.createElement('div');
+        planToolbar.className = 'plan-actions-toolbar';
+
         const planActionsHeader = document.createElement('div');
         planActionsHeader.className = 'plan-actions-header';
-        planActionsHeader.textContent = 'Planned Actions';
-        planActions.appendChild(planActionsHeader);
+        const nextPending = findNextPendingAction(currentProposedPlan.actions);
+        planActionsHeader.textContent = nextPending ? 'Planned Actions | One step ready' : 'Planned Actions | Complete';
+        planToolbar.appendChild(planActionsHeader);
+
+        const approveNextBtn = document.createElement('button');
+        approveNextBtn.type = 'button';
+        approveNextBtn.textContent = 'Approve Next Step';
+        approveNextBtn.disabled = !nextPending;
+        approveNextBtn.onclick = () => approveNextPlanStep();
+        planToolbar.appendChild(approveNextBtn);
+        planActions.appendChild(planToolbar);
 
         currentProposedPlan.actions.forEach((action, index) => {
-          planActions.appendChild(renderActionCard(action, index));
+          planActions.appendChild(renderActionCard(action, index, {
+            isCurrentStep: !!nextPending && action.action_id === nextPending.action_id,
+          }));
         });
 
         planPanel.appendChild(planActions);
@@ -2113,6 +2169,40 @@ textarea {
         setActionStatus(action, 'failed');
         renderActions(currentProposedActions);
         appendChatMessage('TITAN', error.message || 'Failed to record approval for that action.');
+      }
+    }
+
+    async function approveNextPlanStep() {
+      if (!currentProposedPlan) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/plan/approve-next', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: currentProposedPlan.plan_id,
+            actions: currentProposedPlan.actions,
+          })
+        });
+
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          appendChatMessage('TITAN', detail || 'Failed to approve the next plan step.');
+          return;
+        }
+
+        const data = await response.json();
+        const updatedActions = Array.isArray(data.updated_actions) ? data.updated_actions.map(normalizeAction) : [];
+        currentProposedActions = updatedActions;
+        if (currentProposedPlan) {
+          currentProposedPlan.actions = updatedActions;
+        }
+        renderActions(updatedActions);
+      } catch (error) {
+        console.error(error);
+        appendChatMessage('TITAN', 'Failed to approve the next plan step.');
       }
     }
 

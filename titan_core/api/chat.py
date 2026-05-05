@@ -17,7 +17,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from titan_core.action_log import log_action, make_action_log_entry
+from titan_core.action_log import load_action_log, log_action, make_action_log_entry
 from titan_core.agent_memory import get_behavior_patterns
 from titan_core.agent import AgentAction, AgentPlan, get_next_step_message, plan_agent_action, plan_agent_or_plan, validate_agent_action, validate_agent_plan
 from titan_core.brain import run_brain
@@ -486,6 +486,17 @@ def _active_plan_pending_action_type(active_plan: dict | None) -> str:
         if isinstance(action, dict) and str(action.get("status") or "").strip().lower() == "pending":
             return str(action.get("type") or action.get("action") or "")
     return ""
+
+
+def _suggestion_stats(current_step_name: str, replacement_name: str) -> tuple[int, int]:
+    skip_count = 0
+    approve_count = 0
+    for entry in load_action_log():
+        if entry.action_name == current_step_name and entry.status == "skipped":
+            skip_count += 1
+        if entry.action_name == replacement_name and entry.status == "approved":
+            approve_count += 1
+    return skip_count, approve_count
 
 
 def _ensure_action_metadata(proposed: ProposedAction) -> ProposedAction:
@@ -996,11 +1007,16 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             and validate_agent_action(replacement_action)
         ):
             suggested_replacement = _agent_action_to_proposed_action(replacement_action)
+            skip_count, approve_count = _suggestion_stats(current_pending_action, replacement_action.name)
+            suggestion_confidence = min(1.0, (skip_count + approve_count) / 10)
+            suggestion_reason = f"Skipped {skip_count} times and approved {approve_count} times."
             return ChatResponse(
                 reply=f"You usually skip {current_pending_action}. Replace it with {replacement_action.name}?",
                 proposed_actions=[],
                 suggest_replace=True,
                 target_action=current_pending_action,
+                suggestion_confidence=suggestion_confidence,
+                suggestion_reason=suggestion_reason,
                 suggested_replacement_action=suggested_replacement.model_dump(),
             )
     if isinstance(planned_agent_result, AgentPlan) and validate_agent_plan(planned_agent_result):

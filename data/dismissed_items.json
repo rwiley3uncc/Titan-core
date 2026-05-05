@@ -1,1 +1,100 @@
-[]
+[
+  {
+    "item_id": "c8d503b1cf9d450f",
+    "title": "Module 10: Quiz [202610-ITSC-1212-XLS2040202610_Combined]",
+    "course": "202610-ITSC-1212-XLS2040202610_Combined",
+    "dismissed_at": "2026-05-05T12:00:06.496044",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "8b9e7530cf3336eb",
+    "title": "4.3 Quiz - Derivatives\\, Shape of a Graph [202610-MATH-1241-008-204",
+    "course": "No data available.",
+    "dismissed_at": "2026-05-05T12:00:13.506517",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "a1f6e29a12373ed6",
+    "title": "4.7 Quiz - Optimization [202610-MATH-1241-008-20433]",
+    "course": "202610-MATH-1241-008-20433",
+    "dismissed_at": "2026-05-05T12:00:19.570084",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "f5cff78e06ee822c",
+    "title": "Module 11: Quiz [202610-ITSC-1212-XLS2040202610_Combined]",
+    "course": "202610-ITSC-1212-XLS2040202610_Combined",
+    "dismissed_at": "2026-05-05T12:00:24.093996",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "9c2c976a5c22bc17",
+    "title": "In-class assignment #2 [202610-ESCI-1101-004-21754]",
+    "course": "202610-ESCI-1101-004-21754",
+    "dismissed_at": "2026-05-05T12:00:31.118267",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "a0a080667babc2bf",
+    "title": "Exam #3  [202610-ESCI-1101-004-21754]",
+    "course": "202610-ESCI-1101-004-21754",
+    "dismissed_at": "2026-05-05T12:00:35.459234",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "484e7063b11fcbf7",
+    "title": "Module 12: Quiz [202610-ITSC-1212-XLS2040202610_Combined]",
+    "course": "202610-ITSC-1212-XLS2040202610_Combined",
+    "dismissed_at": "2026-05-05T12:00:39.895341",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "10e907f7e8b0ffd6",
+    "title": "4.4 Quiz - l'Hospital [202610-MATH-1241-008-20433]",
+    "course": "202610-MATH-1241-008-20433",
+    "dismissed_at": "2026-05-05T12:00:44.602573",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "799410057a47fa2b",
+    "title": "4.8 Quiz - Newton's Method [202610-MATH-1241-008-20433]",
+    "course": "202610-MATH-1241-008-20433",
+    "dismissed_at": "2026-05-05T12:00:48.005855",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "627382da07aff720",
+    "title": "Final Exam Concepts Review Quiz [202610-ITSC-1212-XLS2040202610_Com",
+    "course": "No data available.",
+    "dismissed_at": "2026-05-05T12:00:53.801088",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "8ce27f965926ed4d",
+    "title": "4.9 Quiz - Antiderivatives [202610-MATH-1241-008-20433]",
+    "course": "202610-MATH-1241-008-20433",
+    "dismissed_at": "2026-05-05T12:00:58.541336",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "84ed9bba41b412cb",
+    "title": "Final Exam Info Quiz (Spring 2026) [202610-MATH-1241-008-20433]",
+    "course": "202610-MATH-1241-008-20433",
+    "dismissed_at": "2026-05-05T12:01:02.177106",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "2e6a9821aa0879ea",
+    "title": "Final Exam [202610-MATH-1241-008-20433]",
+    "course": "202610-MATH-1241-008-20433",
+    "dismissed_at": "2026-05-05T12:01:12.522983",
+    "reason": "user dismissed"
+  },
+  {
+    "item_id": "140e0be9616d13f2",
+    "title": "Final Exam  [202610-ESCI-1101-004-21754]",
+    "course": "202610-ESCI-1101-004-21754",
+    "dismissed_at": "2026-05-05T12:01:17.740598",
+    "reason": "user dismissed"
+  }
+]

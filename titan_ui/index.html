@@ -539,6 +539,13 @@ textarea {
   line-height: 1.5;
 }
 
+.plan-suggestion-meta {
+  margin-top: 8px;
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .plan-suggestion-actions {
   display: flex;
   gap: 8px;
@@ -2191,6 +2198,17 @@ textarea {
           suggestion.className = 'plan-suggestion';
           suggestion.textContent = currentPlanSuggestion.reply || 'You usually skip this step. Replace it?';
 
+          const suggestionMeta = document.createElement('div');
+          suggestionMeta.className = 'plan-suggestion-meta';
+          const confidencePercent = typeof currentPlanSuggestion.suggestion_confidence === 'number'
+            ? Math.round(currentPlanSuggestion.suggestion_confidence * 100)
+            : 0;
+          suggestionMeta.textContent =
+            `Confidence: ${confidencePercent}%\n` +
+            `Reason: ${currentPlanSuggestion.suggestion_reason || 'No reason provided.'}`;
+          suggestionMeta.style.whiteSpace = 'pre-line';
+          suggestion.appendChild(suggestionMeta);
+
           const suggestionActions = document.createElement('div');
           suggestionActions.className = 'plan-suggestion-actions';
 
@@ -2639,6 +2657,8 @@ textarea {
               suggest_replace: true,
               reply: data.reply || 'You usually skip this step. Replace it?',
               target_action: data.target_action || '',
+              suggestion_confidence: typeof data.suggestion_confidence === 'number' ? data.suggestion_confidence : null,
+              suggestion_reason: data.suggestion_reason || '',
               suggested_replacement_action: data.suggested_replacement_action || null,
             }
           : null;

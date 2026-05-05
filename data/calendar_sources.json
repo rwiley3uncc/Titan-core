@@ -13,8 +13,8 @@
     "name": "Personal Calendar",
     "type": "outlook",
     "url": "https://outlook.live.com/owa/calendar/a6a0f635-0ca2-445e-846b-4b5b3cd3e483/452432f4-fdf5-48be-9feb-3f9b752d5686/cid-E6FA1A5A89A81B3E/calendar.ics",
-    "enabled": false,
+    "enabled": true,
     "created_at": "2026-04-28T15:40:00",
-    "updated_at": "2026-04-28T16:15:51.175052"
+    "updated_at": "2026-04-28T16:38:06.330339"
   }
 ]

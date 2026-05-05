@@ -264,3 +264,7 @@ def get_next_pending_action(plan: AgentPlan) -> AgentAction | None:
         if action.status == "pending":
             return action
     return None
+
+
+def is_plan_complete(plan: AgentPlan) -> bool:
+    return all(action.status != "pending" for action in plan.actions)

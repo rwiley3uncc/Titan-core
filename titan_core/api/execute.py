@@ -4,7 +4,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException
 
-from titan_core.agent import SAFE_ACTIONS
+from titan_core.agent import AgentAction, AgentPlan, SAFE_ACTIONS, is_plan_complete
 from titan_core.agent_memory import get_action_summary
 from titan_core.action_log import load_action_log, log_action, make_action_log_entry
 from titan_core.executor import execute_action
@@ -146,12 +146,46 @@ def approve_next_plan_step(payload: dict) -> dict:
                 next_pending_index = index
 
     if next_pending_index is None:
-        return {"updated_actions": updated_actions}
+        plan = AgentPlan(
+            plan_id=plan_id,
+            summary="",
+            actions=[
+                AgentAction(
+                    name=str(action.get("type") or action.get("action") or "unknown_action"),
+                    description=str(action.get("label") or action.get("type") or "Unknown action"),
+                    action_id=str(action.get("action_id") or ""),
+                    created_at=float(action.get("created_at") or 0.0),
+                    status=str(action.get("status") or "pending"),
+                    confidence=float(action.get("confidence") or 0.0),
+                    reason=str(action.get("reason") or ""),
+                    payload=action.get("args", {}) if isinstance(action.get("args", {}), dict) else {},
+                )
+                for action in updated_actions
+            ],
+        )
+        return {"updated_actions": updated_actions, "plan_complete": is_plan_complete(plan)}
 
     target_action = updated_actions[next_pending_index]
     result = _execute_or_approve_action(target_action)
     target_action["status"] = str(result.get("action_status") or target_action.get("status") or "pending").lower()
-    return {"updated_actions": updated_actions}
+    plan = AgentPlan(
+        plan_id=plan_id,
+        summary="",
+        actions=[
+            AgentAction(
+                name=str(action.get("type") or action.get("action") or "unknown_action"),
+                description=str(action.get("label") or action.get("type") or "Unknown action"),
+                action_id=str(action.get("action_id") or ""),
+                created_at=float(action.get("created_at") or 0.0),
+                status=str(action.get("status") or "pending"),
+                confidence=float(action.get("confidence") or 0.0),
+                reason=str(action.get("reason") or ""),
+                payload=action.get("args", {}) if isinstance(action.get("args", {}), dict) else {},
+            )
+            for action in updated_actions
+        ],
+    )
+    return {"updated_actions": updated_actions, "plan_complete": is_plan_complete(plan)}
 
 
 @router.get("/action-log")

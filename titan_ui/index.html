@@ -543,6 +543,17 @@ textarea {
   font-weight: 700;
 }
 
+.plan-complete {
+  color: #166534;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.plan-panel.is-complete {
+  opacity: 0.82;
+  border-color: #86efac;
+}
+
 .action-card {
   border: 1px solid #dbe4f0;
   border-radius: 12px;
@@ -1301,6 +1312,7 @@ textarea {
       if (!plan || typeof plan !== 'object') return null;
       return {
         ...plan,
+        plan_complete: !!plan.plan_complete,
         actions: Array.isArray(plan.actions) ? plan.actions.map(normalizeAction) : [],
       };
     }
@@ -1373,6 +1385,7 @@ textarea {
       currentProposedPlan.current_step_index = nextPending
         ? currentProposedPlan.actions.findIndex(action => action.action_id === nextPending.action_id)
         : currentProposedPlan.actions.length;
+      currentProposedPlan.plan_complete = !nextPending;
     }
 
     function renderCalendarSources() {
@@ -2054,7 +2067,7 @@ textarea {
 
       if (currentProposedPlan) {
         const planPanel = document.createElement('div');
-        planPanel.className = 'plan-panel';
+        planPanel.className = 'plan-panel' + (currentProposedPlan.plan_complete ? ' is-complete' : '');
 
         const planTitle = document.createElement('div');
         planTitle.className = 'plan-title';
@@ -2087,10 +2100,17 @@ textarea {
         planActionsHeader.textContent = nextPending ? 'Planned Actions | One step ready' : 'Planned Actions | Complete';
         planToolbar.appendChild(planActionsHeader);
 
+        if (currentProposedPlan.plan_complete) {
+          const planComplete = document.createElement('div');
+          planComplete.className = 'plan-complete';
+          planComplete.textContent = 'Plan complete';
+          planToolbar.appendChild(planComplete);
+        }
+
         const approveNextBtn = document.createElement('button');
         approveNextBtn.type = 'button';
         approveNextBtn.textContent = 'Approve Next Step';
-        approveNextBtn.disabled = !nextPending;
+        approveNextBtn.disabled = !nextPending || !!currentProposedPlan.plan_complete;
         approveNextBtn.onclick = () => approveNextPlanStep();
         planToolbar.appendChild(approveNextBtn);
         planActions.appendChild(planToolbar);
@@ -2173,7 +2193,7 @@ textarea {
     }
 
     async function approveNextPlanStep() {
-      if (!currentProposedPlan) {
+      if (!currentProposedPlan || currentProposedPlan.plan_complete) {
         return;
       }
 
@@ -2198,6 +2218,7 @@ textarea {
         currentProposedActions = updatedActions;
         if (currentProposedPlan) {
           currentProposedPlan.actions = updatedActions;
+          currentProposedPlan.plan_complete = !!data.plan_complete;
         }
         renderActions(updatedActions);
       } catch (error) {

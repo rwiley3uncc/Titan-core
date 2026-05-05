@@ -28,6 +28,9 @@ class TitanSettings:
     search_api_key: str | None = (
         os.getenv("TITAN_SEARCH_API_KEY") or None
     )
+    searxng_url: str | None = (
+        os.getenv("TITAN_SEARXNG_URL") or None
+    )
 
     sitrep_time: str = os.getenv(
         "TITAN_SITREP_TIME",

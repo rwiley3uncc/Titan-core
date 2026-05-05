@@ -46,6 +46,7 @@ class BrainOutput(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     mode: Optional[str] = "personal_general"
+    web_enabled: Optional[bool] = False
     file_name: Optional[str] = None
     file_content: Optional[str] = None
     active_plan: Optional[Dict[str, Any]] = None

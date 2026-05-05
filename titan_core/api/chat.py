@@ -1104,6 +1104,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     user = get_default_mvp_user(db)
     clean_text = req.message.strip()
     mode = safe_mode(req)
+    web_allowed = bool(req.web_enabled) and bool(settings.verified_web_enabled)
     now = datetime.now()
     planned_agent_result = plan_agent_or_plan(clean_text)
     file_name, file_content, file_error = sanitize_uploaded_file(req)
@@ -1227,7 +1228,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         if not has_verified_source_for_topic(clean_text, verified_context):
             # Personal Assistant may use verified web only through the
             # controlled trusted-domain retrieval layer.
-            verified_web = build_verified_web_context(clean_text)
+            verified_web = build_verified_web_context(clean_text) if web_allowed else None
             if verified_web is not None:
                 verified_context["verified_web"] = verified_web
                 details = get_verified_source_details(clean_text, verified_context)
@@ -1258,6 +1259,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
                 ChatRequest(
                     message=req.message,
                     mode=mode,
+                    web_enabled=req.web_enabled,
                     file_name=file_name,
                     file_content=file_content,
                 ),

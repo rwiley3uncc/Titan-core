@@ -387,6 +387,15 @@ textarea {
   color: var(--muted);
 }
 
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+
 .settings-list {
   display: flex;
   flex-direction: column;
@@ -1193,6 +1202,11 @@ textarea {
           <div class="voice-settings-title">Privacy &amp; Grounding</div>
           <div class="voice-control-value">Titan only answers using verified data.</div>
           <div class="voice-control-value">Titan does not guess.</div>
+          <label class="settings-toggle" for="webEnabledToggle">
+            <input id="webEnabledToggle" type="checkbox" />
+            Enable Verified Web Access
+          </label>
+          <div class="voice-control-value">Web lookup stays off unless both this toggle and backend verified web access are enabled.</div>
         </div>
       </div>
       <div class="modal-footer">
@@ -1211,6 +1225,7 @@ textarea {
     let planActionRequestInFlight = false;
     let selectedDevFile = null;
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
+    const WEB_ENABLED_STORAGE_KEY = 'titan_web_enabled';
     const VOICE_NAME_STORAGE_KEY = 'titan_voice_name';
     const VOICE_RATE_STORAGE_KEY = 'titan_voice_rate';
     const VOICE_PITCH_STORAGE_KEY = 'titan_voice_pitch';
@@ -1359,6 +1374,21 @@ textarea {
 
     function currentMode() {
       return document.getElementById('assistantMode').value || 'personal_general';
+    }
+
+    function currentWebEnabled() {
+      return localStorage.getItem(WEB_ENABLED_STORAGE_KEY) === 'true';
+    }
+
+    function saveWebEnabledSetting() {
+      const checkbox = document.getElementById('webEnabledToggle');
+      localStorage.setItem(WEB_ENABLED_STORAGE_KEY, checkbox && checkbox.checked ? 'true' : 'false');
+    }
+
+    function restoreWebEnabledSetting() {
+      const checkbox = document.getElementById('webEnabledToggle');
+      if (!checkbox) return;
+      checkbox.checked = currentWebEnabled();
     }
 
     function saveModeSelection() {
@@ -2895,6 +2925,7 @@ textarea {
           body: JSON.stringify({
             message: text,
             mode,
+            web_enabled: currentWebEnabled(),
             file_name: selectedDevFile ? selectedDevFile.name : null,
             file_content: selectedDevFile ? selectedDevFile.content : null,
             active_plan: activePlanPayload(),
@@ -3056,6 +3087,7 @@ textarea {
       saveModeSelection();
       updateModeHint();
     });
+    document.getElementById('webEnabledToggle').addEventListener('change', saveWebEnabledSetting);
     document.getElementById('refreshSitrepBtn').addEventListener('click', loadSitrep);
     document.getElementById('speakSitrepBtn').addEventListener('click', speakSitrep);
     document.getElementById('stopVoiceBtn').addEventListener('click', stopVoice);
@@ -3108,6 +3140,7 @@ textarea {
       ensureChat();
       createChat();
       restoreModeSelection();
+      restoreWebEnabledSetting();
       restoreVoiceSettings();
       updateModeHint();
       await loadSitrep();

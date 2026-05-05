@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 import json
 from typing import Callable
 from urllib.parse import urlencode, urlparse
@@ -91,6 +92,25 @@ def _result_domain(url: str) -> str:
     return (urlparse((url or "").strip()).hostname or "").lower()
 
 
+def is_allowed_searxng_url(url: str) -> bool:
+    parsed = urlparse((url or "").strip())
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return False
+
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        return False
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return True
+
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    return address.is_private or address.is_loopback
+
+
 def _brave_search_results(
     query: str,
     urlopen_fn: Callable[..., object] | None = None,
@@ -146,13 +166,63 @@ def _brave_search_results(
     return results
 
 
+def _searxng_search_results(
+    query: str,
+    urlopen_fn: Callable[..., object] | None = None,
+) -> list[dict]:
+    base_url = str(settings.searxng_url or "").strip()
+    if not is_allowed_searxng_url(base_url):
+        return []
+
+    params = urlencode({"q": query, "format": "json"})
+    request = Request(
+        url=f"{base_url.rstrip('/')}/search?{params}",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "TitanCore/verified-web",
+        },
+        method="GET",
+    )
+    opener = urlopen_fn or urlopen
+
+    try:
+        with opener(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        # Fail closed on local provider errors rather than guessing.
+        return []
+
+    raw_results = payload.get("results", [])
+    if not isinstance(raw_results, list):
+        return []
+
+    results: list[dict] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        results.append(
+            {
+                "title": str(item.get("title") or "").strip(),
+                "url": str(item.get("url") or "").strip(),
+                "snippet": str(item.get("content") or item.get("snippet") or "").strip(),
+                "source_status": "snippet_only",
+                "confidence": "medium",
+            }
+        )
+    return results
+
+
 def _search_provider_results(query: str) -> list[dict]:
     provider = (settings.search_provider or "").strip().lower()
-    if not provider or not settings.search_api_key:
+    if not provider:
         # Fail closed when no verified provider is configured.
         return []
     if provider == "brave":
+        if not settings.search_api_key:
+            return []
         return _brave_search_results(query)
+    if provider == "searxng":
+        return _searxng_search_results(query)
     return []
 
 

@@ -8,7 +8,7 @@ from titan_core.api import chat as chat_api
 from titan_core.config import get_brave_api_key, get_search_provider, get_searxng_url, is_verified_web_enabled
 from titan_core.schemas import BrainOutput, ChatRequest
 from titan_core import verified_web
-from titan_core.verified_web import VerifiedWebResult, VerifiedWebSource, build_verified_web_context, filter_trusted_results, is_trusted_url
+from titan_core.verified_web import VerifiedWebResult, VerifiedWebSource, build_verified_web_context, filter_trusted_results, is_trusted_url, score_source
 
 
 FAKE_USER = SimpleNamespace(id=1, role="owner", username="owner")
@@ -423,6 +423,41 @@ class ChatRoutingTests(unittest.TestCase):
         assert result is not None
         self.assertEqual([source.title for source in result.sources], ["Python.org"])
         self.assertEqual(result.source_status, "snippet_only")
+
+    def test_official_source_outranks_wikipedia_for_entity_query(self) -> None:
+        query = "who is the ceo of openai"
+        official = VerifiedWebSource(
+            title="OpenAI Leadership",
+            url="https://openai.com/about/",
+            domain="openai.com",
+            extracted_text="OpenAI leadership includes the current executive team and company leadership details for the organization.",
+        )
+        wikipedia = VerifiedWebSource(
+            title="OpenAI - Wikipedia",
+            url="https://en.wikipedia.org/wiki/OpenAI",
+            domain="wikipedia.org",
+            extracted_text="OpenAI is an artificial intelligence organization. Its leadership and history are summarized here.",
+        )
+
+        official_score = score_source(official, query)
+        wikipedia_score = score_source(wikipedia, query)
+
+        self.assertGreater(official_score, wikipedia_score)
+        self.assertGreaterEqual(official_score, 55)
+        self.assertGreaterEqual(wikipedia_score, 55)
+
+    def test_weak_blog_with_short_snippet_fails_threshold(self) -> None:
+        query = "who is the ceo of openai"
+        weak = VerifiedWebSource(
+            title="OpenAI CEO rumor post",
+            url="https://random-blog-example.com/post",
+            domain="random-blog-example.com",
+            extracted_text="Opinion post.",
+        )
+
+        weak_score = score_source(weak, query)
+
+        self.assertLess(weak_score, 55)
 
     def test_mocked_provider_with_only_untrusted_results_returns_none(self) -> None:
         with patch("titan_core.verified_web.is_verified_web_enabled", return_value=True):

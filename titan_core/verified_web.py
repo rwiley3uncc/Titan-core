@@ -33,7 +33,32 @@ TRUSTED_DOMAINS = [
     "bbc.com",
 ]
 
-MIN_SOURCE_SCORE = 40
+OFFICIAL_ENTITY_DOMAINS = {
+    "openai": ("openai.com",),
+    "microsoft": ("microsoft.com", "support.microsoft.com"),
+    "nvidia": ("nvidia.com",),
+    "google": ("google.com", "deepmind.google"),
+    "deepmind": ("deepmind.google", "google.com"),
+    "python": ("python.org", "docs.python.org"),
+    "fastapi": ("fastapi.tiangolo.com",),
+}
+HIGH_TRUST_PUBLIC_SUFFIXES = (".gov", ".edu")
+REPUTABLE_REFERENCE_DOMAINS = (
+    "reuters.com",
+    "apnews.com",
+    "bbc.com",
+    "britannica.com",
+    "wikipedia.org",
+)
+WEAK_SOURCE_DOMAINS = (
+    "reddit.com",
+    "quora.com",
+    "facebook.com",
+    "tiktok.com",
+    "pinterest.com",
+)
+CURRENT_FACT_KEYWORDS = ("current", "official", "announced", "leadership", "ceo", "board", "president")
+MIN_SOURCE_SCORE = 55
 
 
 @dataclass
@@ -55,48 +80,89 @@ class VerifiedWebResult:
     failure_reason: str | None = None
 
 
-def score_source(source: VerifiedWebSource) -> int:
+def _normalize_domain(domain: str) -> str:
+    normalized = (domain or "").strip().lower()
+    return normalized[4:] if normalized.startswith("www.") else normalized
+
+
+def _tokenize_query(text: str) -> list[str]:
+    cleaned = "".join(ch.lower() if ch.isalnum() else " " for ch in (text or ""))
+    return [part for part in cleaned.split() if part]
+
+
+def _matches_domain(domain: str, candidate: str) -> bool:
+    candidate = candidate.lower()
+    return domain == candidate or domain.endswith(f".{candidate}")
+
+
+def _query_entities(query: str) -> list[str]:
+    lowered = (query or "").lower()
+    return [entity for entity in OFFICIAL_ENTITY_DOMAINS if entity in lowered]
+
+
+def _is_current_fact_query(query: str) -> bool:
+    lowered = (query or "").lower()
+    return any(keyword in lowered for keyword in CURRENT_FACT_KEYWORDS)
+
+
+def score_source(source: VerifiedWebSource, query: str) -> int:
     score = 0
-    domain = source.domain.lower()
+    domain = _normalize_domain(source.domain)
     title = source.title.lower()
     text = source.extracted_text.lower()
+    query_lower = (query or "").lower()
+    query_tokens = _tokenize_query(query)
+    query_entities = _query_entities(query)
 
-    trusted_hit = False
+    trust_class_score = 0
+    matched_official_entity = False
+    for entity in query_entities:
+        if any(_matches_domain(domain, official_domain) for official_domain in OFFICIAL_ENTITY_DOMAINS[entity]):
+            trust_class_score = max(trust_class_score, 70)
+            matched_official_entity = True
+
+    for suffix in HIGH_TRUST_PUBLIC_SUFFIXES:
+        bare_suffix = suffix[1:]
+        if domain == bare_suffix or domain.endswith(suffix):
+            trust_class_score = max(trust_class_score, 52)
+
+    if any(_matches_domain(domain, reputable) for reputable in REPUTABLE_REFERENCE_DOMAINS):
+        trust_class_score = max(trust_class_score, 45)
+
     for trusted in TRUSTED_DOMAINS:
         trusted = trusted.lower()
         if trusted.startswith("."):
-            suffix = trusted[1:]
-            if domain == suffix or domain.endswith(f".{suffix}"):
-                score += 45
-                trusted_hit = True
-        elif domain == trusted or domain.endswith(f".{trusted}"):
-            score += 50
-            trusted_hit = True
+            bare_suffix = trusted[1:]
+            if domain == bare_suffix or domain.endswith(f".{bare_suffix}"):
+                trust_class_score = max(trust_class_score, 52)
+        elif _matches_domain(domain, trusted):
+            trust_class_score = max(trust_class_score, 50)
 
-    if any(domain == suffix or domain.endswith(f".{suffix}") for suffix in ("edu", "gov")):
-        score += 45
-        trusted_hit = True
-
-    if any(
-        reputable in domain
-        for reputable in ("wikipedia.org", "britannica.com", "reuters.com", "apnews.com", "bbc.com")
-    ):
-        score += 45
-        trusted_hit = True
+    score += trust_class_score
 
     if len(source.extracted_text) > 120:
         score += 10
+    elif len(source.extracted_text) < 40:
+        score -= 18
+    elif len(source.extracted_text) < 80:
+        score -= 8
 
-    if any(keyword in text or keyword in title for keyword in ("official", "announced", "current", "leadership")):
+    if query_entities and any(entity in title or entity in text for entity in query_entities):
         score += 10
+    else:
+        matching_tokens = sum(1 for token in query_tokens if len(token) > 2 and (token in title or token in text))
+        score += min(matching_tokens * 4, 12)
 
-    if any(bad in domain for bad in ["reddit", "quora", "tiktok", "facebook", "pinterest"]):
-        score -= 45
+    if _is_current_fact_query(query) and any(keyword in text or keyword in title for keyword in CURRENT_FACT_KEYWORDS):
+        score += 8
 
-    if domain.startswith("www."):
-        domain = domain[4:]
+    if any(_matches_domain(domain, bad_domain) for bad_domain in WEAK_SOURCE_DOMAINS):
+        score -= 55
 
-    if not trusted_hit and len(source.extracted_text) < 80:
+    if not matched_official_entity and trust_class_score == 0:
+        score -= 15
+
+    if trust_class_score < 45 and len(source.extracted_text) < 120:
         score -= 10
 
     return max(0, min(score, 100))
@@ -310,12 +376,13 @@ def build_verified_web_context(
             source_status=str(result.get("source_status") or "snippet_only"),
         )
 
-        source.score = score_source(source)
+        source.score = score_source(source, query)
 
         logger.info(
-            "[verified_web] scored %s score=%s",
+            "[verified_web] scored domain=%s score=%s url=%s",
             source.domain,
             source.score,
+            source.url,
         )
 
         if source.score >= MIN_SOURCE_SCORE:

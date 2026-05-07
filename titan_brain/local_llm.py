@@ -1,36 +1,13 @@
-"""Local LLM integration for Titan.
+"""Deprecated compatibility wrapper for Titan's local LLM adapter.
 
-This module routes Titan's reply generation through a local Ollama server,
-so normal local use does not require an OPENAI_API_KEY.
+The active Ollama/local-model adapter now lives in Titan-AI. This wrapper stays
+in place temporarily so older imports continue to resolve during migration.
 """
 
-import os
+from __future__ import annotations
 
-import requests
+from titan_core.titan_ai_imports import enable_titan_ai_imports
 
-OLLAMA_URL = os.getenv("TITAN_OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_MODEL = os.getenv("TITAN_OLLAMA_MODEL", "llama3")
+enable_titan_ai_imports()
 
-
-def generate_local_reply(prompt: str, system_prompt: str = "") -> str:
-    """Generate a non-streaming reply from the configured local Ollama model."""
-    full_prompt = prompt
-
-    if system_prompt:
-        full_prompt = (
-            f"System instructions:\n{system_prompt}\n\n"
-            f"User/task prompt:\n{prompt}"
-        )
-
-    payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": full_prompt,
-        "stream": False,
-    }
-
-    print("Using local Ollama model")
-    response = requests.post(OLLAMA_URL, json=payload, timeout=120)
-    response.raise_for_status()
-
-    data = response.json()
-    return data.get("response", "").strip()
+from titan_ai.local_llm import OLLAMA_MODEL, OLLAMA_URL, generate_local_reply

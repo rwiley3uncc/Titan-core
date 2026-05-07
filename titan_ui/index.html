@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Titan | Personal Assistant</title>
+  <title>Titan BattleBuddy | Personal Assistant</title>
  <style>
 
 :root {
@@ -1028,8 +1028,8 @@ textarea {
 </head>
 <body>
   <div class="header">
-    <h1>Titan</h1>
-    <div id="headerStatus" class="sub">Personal Assistant | Online</div>
+    <h1>Titan BattleBuddy</h1>
+    <div id="headerStatus" class="sub">BattleBuddy Controller | Online</div>
   </div>
 
   <div class="container">
@@ -1126,7 +1126,7 @@ textarea {
       </div>
     </div>
 
-    <div class="footer">Titan Core — Dashboard + Chat Prototype</div>
+    <div class="footer">Titan BattleBuddy — Dashboard + Chat Prototype</div>
   </div>
 
   <div id="actionsModal" class="modal-backdrop" aria-hidden="true">
@@ -1146,7 +1146,7 @@ textarea {
   <div id="settingsModal" class="modal-backdrop" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
       <div class="modal-header">
-        <h3 id="settingsModalTitle" class="modal-title">Titan Settings</h3>
+        <h3 id="settingsModalTitle" class="modal-title">Titan BattleBuddy Settings</h3>
       </div>
       <div class="modal-body">
         <div class="voice-settings" style="margin-top:0;">
@@ -1218,8 +1218,8 @@ textarea {
         </div>
         <div class="voice-settings">
           <div class="voice-settings-title">Privacy &amp; Grounding</div>
-          <div class="voice-control-value">Titan only answers using verified data.</div>
-          <div class="voice-control-value">Titan does not guess.</div>
+          <div class="voice-control-value">Titan BattleBuddy only answers using verified data.</div>
+          <div class="voice-control-value">Titan BattleBuddy does not guess.</div>
           <label class="settings-toggle" for="webEnabledToggle">
             <input id="webEnabledToggle" type="checkbox" />
             Enable Verified Web Access
@@ -2297,7 +2297,7 @@ textarea {
         await loadSitrep();
 
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('Titan Morning Sitrep', {
+          new Notification('Titan BattleBuddy Morning Sitrep', {
             body: (latestSitrepPayload && latestSitrepPayload.spoken_text) || 'Your morning sitrep is ready.'
           });
         }
@@ -2463,7 +2463,7 @@ textarea {
         planMeta.className = 'plan-meta';
         planMeta.textContent = currentProposedPlan.plan_complete
           ? 'All steps have been reviewed.'
-          : 'Review one step at a time. Titan will only act after approval.';
+          : 'Review one step at a time. Titan BattleBuddy will only act after approval.';
         planPanel.appendChild(planMeta);
 
         const planSummary = document.createElement('div');
@@ -2483,7 +2483,7 @@ textarea {
 
           const suggestionTitle = document.createElement('div');
           suggestionTitle.className = 'plan-suggestion-title';
-          suggestionTitle.textContent = 'Titan noticed a pattern';
+          suggestionTitle.textContent = 'Titan BattleBuddy noticed a pattern';
           suggestion.appendChild(suggestionTitle);
 
           const targetActionLabel = formatActionName(currentPlanSuggestion.target_action || '');

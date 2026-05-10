@@ -19,6 +19,7 @@ from titan_core.api.execute import router as execute_router
 from titan_core.api.sitrep import router as sitrep_router
 from titan_core.config import get_search_provider, is_verified_web_enabled, settings
 from titan_core.db import Base, SessionLocal, engine
+from titan_core.event_log import emit_battlebuddy_event
 from titan_core.models import User
 from titan_core.titan_shared_imports import ensure_titan_shared_on_path
 import titan_core.models
@@ -50,6 +51,20 @@ app.include_router(chat_router, prefix="/api")
 app.include_router(calendar_sources_router, prefix="/api")
 app.include_router(execute_router, prefix="/api")
 app.include_router(sitrep_router, prefix="/api")
+
+
+@app.on_event("startup")
+def record_runtime_startup() -> None:
+    emit_battlebuddy_event(
+        subsystem="battlebuddy",
+        severity="INFO",
+        event_type="runtime_startup",
+        summary="BattleBuddy runtime startup completed.",
+        details="Titan BattleBuddy FastAPI startup hook completed.",
+        confidence=1.0,
+        risk="low",
+        status="completed",
+    )
 
 
 @app.get("/", response_class=HTMLResponse)

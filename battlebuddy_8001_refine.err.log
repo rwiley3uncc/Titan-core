@@ -1,0 +1,6 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\mouse\\DEV\\Titan-core']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [39176] using StatReload
+INFO:     Started server process [25380]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

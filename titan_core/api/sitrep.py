@@ -15,6 +15,7 @@ from titan_core.dismissed_items_store import (
     list_dismissed_items,
     stable_item_id_for_planner_item,
 )
+from titan_core.event_log import emit_battlebuddy_event
 from titan_core.outlook_feed import import_outlook_ics_from_url
 from titan_core.planning import PlannerItem
 from titan_core.schemas import DismissedItemCreate, DismissedItemRecord
@@ -669,11 +670,68 @@ def get_sitrep(
     now_iso: str | None = Query(default=None),
     weather_location: str | None = Query(default="Charlotte"),
 ):
-    return build_sitrep_payload(
-        weather_summary=weather_summary,
-        now_iso=now_iso,
-        weather_location=weather_location,
+    emit_battlebuddy_event(
+        subsystem="titan_core",
+        severity="INFO",
+        event_type="sitrep_refresh_requested",
+        summary="Sitrep refresh requested.",
+        details=(
+            f"Weather override: {bool(weather_summary)} | "
+            f"Location provided: {bool(weather_location)} | "
+            f"Custom time: {bool(now_iso)}"
+        ),
+        confidence=1.0,
+        risk="low",
+        status="recorded",
     )
+
+    try:
+        payload = build_sitrep_payload(
+            weather_summary=weather_summary,
+            now_iso=now_iso,
+            weather_location=weather_location,
+        )
+    except Exception as exc:
+        emit_battlebuddy_event(
+            subsystem="titan_core",
+            severity="ERROR",
+            event_type="sitrep_refresh_failed",
+            summary="Sitrep refresh failed.",
+            details=f"Reason: {type(exc).__name__}.",
+            confidence=1.0,
+            risk="medium",
+            status="failed",
+        )
+        raise
+
+    warnings = payload.get("warnings", [])
+    if isinstance(warnings, list) and warnings:
+        emit_battlebuddy_event(
+            subsystem="titan_core",
+            severity="WARN",
+            event_type="calendar_source_degraded",
+            summary="Sitrep completed with degraded source coverage.",
+            details=f"Warnings: {len(warnings)} | Calendar sources: {len(payload.get('source_counts', {}))}.",
+            confidence=0.8,
+            risk="medium",
+            status="completed",
+        )
+
+    emit_battlebuddy_event(
+        subsystem="titan_core",
+        severity="OK" if not warnings else "NOTICE",
+        event_type="sitrep_refresh_succeeded",
+        summary="Sitrep refresh succeeded.",
+        details=(
+            f"Today items: {len(payload.get('today', []))} | "
+            f"Must-do items: {len(payload.get('must_do_today', []))} | "
+            f"Warnings: {len(warnings) if isinstance(warnings, list) else 0}"
+        ),
+        confidence=0.9,
+        risk="low" if not warnings else "medium",
+        status="completed",
+    )
+    return payload
 
 
 @router.get("/dismissed-items", response_model=list[DismissedItemRecord])

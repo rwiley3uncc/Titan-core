@@ -1,4 +1,9 @@
 """
+LEGACY / NOT ACTIVE TOOLING PATH
+--------------------------------
+This archived executor is not part of the active Titan Core / BattleBuddy
+runtime. It is preserved only for historical reference.
+
 executor.py
 
 Purpose:

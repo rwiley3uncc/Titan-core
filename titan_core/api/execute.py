@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException
 from titan_core.agent import AgentAction, AgentPlan, SAFE_ACTIONS, get_next_step_message, is_plan_complete, plan_agent_action, validate_agent_action
 from titan_core.agent_memory import get_action_summary
 from titan_core.action_log import load_action_log, log_action, make_action_log_entry
+from titan_core.approval_log import emit_approval_request
+from titan_core.event_log import emit_battlebuddy_event
 from titan_core.executor import execute_action
 
 router = APIRouter()
@@ -80,6 +82,36 @@ def _execute_or_approve_action(action: dict) -> dict:
     )
 
     if action_name not in SAFE_ACTIONS:
+        emit_approval_request(
+            source="battlebuddy",
+            subsystem="titan_core",
+            title=f"Blocked action request: {action_name}",
+            summary="A constrained action request was blocked because it is outside the current allow-list.",
+            requested_action=action_name,
+            risk="high",
+            confidence=1.0,
+            requires_confirmation=True,
+            status="blocked",
+            created_by="battlebuddy",
+            metadata={
+                "action_id": action_id,
+                "app": payload.get("app"),
+                "implemented": payload.get("implemented"),
+                "requires_approval": payload.get("requires_approval"),
+            },
+        )
+        emit_battlebuddy_event(
+            subsystem="titan_core",
+            severity="WARN",
+            event_type="constrained_action_blocked",
+            summary=f"Constrained action blocked: {action_name}.",
+            details="Action is outside the current allow-list.",
+            confidence=1.0,
+            risk="medium",
+            requires_approval=True,
+            approved=True,
+            status="failed",
+        )
         return {
             "status": "approved",
             "message": "Action approved and awaiting future implementation.",
@@ -87,10 +119,35 @@ def _execute_or_approve_action(action: dict) -> dict:
             "action_status": "approved",
         }
 
+    emit_battlebuddy_event(
+        subsystem="titan_core",
+        severity="NOTICE",
+        event_type="constrained_action_allowed",
+        summary=f"Constrained action allowed for execution: {action_name}.",
+        details="Action is inside the current allow-list and proceeding through the constrained executor.",
+        confidence=1.0,
+        risk="medium",
+        requires_approval=True,
+        approved=True,
+        status="approved",
+    )
+
     try:
         result = execute_action(action)
     except Exception as exc:
         error_message = str(exc) or "execution failed"
+        emit_battlebuddy_event(
+            subsystem="titan_core",
+            severity="ERROR",
+            event_type="constrained_action_failed",
+            summary=f"Constrained action failed: {action_name}.",
+            details=f"Failure type: {type(exc).__name__}.",
+            confidence=1.0,
+            risk="high",
+            requires_approval=True,
+            approved=True,
+            status="failed",
+        )
         log_action(
             make_action_log_entry(
                 action_id=action_id,
@@ -107,6 +164,22 @@ def _execute_or_approve_action(action: dict) -> dict:
 
     success = result.get("status") == "executed"
     final_status = "executed" if success else "failed"
+    emit_battlebuddy_event(
+        subsystem="titan_core",
+        severity="OK" if success else "ERROR",
+        event_type="constrained_action_executed" if success else "constrained_action_failed",
+        summary=(
+            f"Constrained action executed: {action_name}."
+            if success else
+            f"Constrained action returned a non-executed result: {action_name}."
+        ),
+        details=f"Executor status: {result.get('status', 'unknown')}.",
+        confidence=1.0 if success else 0.8,
+        risk="medium" if success else "high",
+        requires_approval=True,
+        approved=True,
+        status="completed" if success else "failed",
+    )
     log_action(
         make_action_log_entry(
             action_id=action_id,
@@ -137,6 +210,19 @@ def execute(action: dict):
     if not action_id:
         raise HTTPException(status_code=400, detail="action_id is required.")
 
+    emit_battlebuddy_event(
+        subsystem="titan_core",
+        severity="INFO",
+        event_type="constrained_action_requested",
+        summary=f"Constrained action execution requested: {action_name}.",
+        details=f"Client execution payload present: {isinstance(action.get('client_execution'), dict)}.",
+        confidence=1.0,
+        risk="medium",
+        requires_approval=True,
+        approved=False,
+        status="pending",
+    )
+
     client_execution = action.get("client_execution")
     if isinstance(client_execution, dict):
         status = str(client_execution.get("status") or "").strip().lower()
@@ -154,6 +240,18 @@ def execute(action: dict):
                 executed=status == "executed",
                 result=result,
             )
+        )
+        emit_battlebuddy_event(
+            subsystem="titan_core",
+            severity="NOTICE" if status in {"approved", "executed"} else "WARN",
+            event_type="constrained_action_client_reported",
+            summary=f"Client reported constrained action status: {status}.",
+            details=f"Action: {action_name}.",
+            confidence=0.9,
+            risk="medium",
+            requires_approval=True,
+            approved=status in {"approved", "executed"},
+            status="completed" if status in {"approved", "executed"} else "failed",
         )
         return {
             "status": "logged",

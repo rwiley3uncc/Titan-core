@@ -19,12 +19,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from titan_core.action_log import load_action_log, log_action, make_action_log_entry
+from titan_core.approval_log import emit_approval_request
 from titan_core.agent_memory import get_behavior_patterns
 from titan_core.agent import AgentAction, AgentPlan, get_next_step_message, plan_agent_action, plan_agent_or_plan, validate_agent_action, validate_agent_plan
 from titan_core.brain import run_brain
 from titan_core.api.sitrep import build_sitrep_payload
 from titan_core.config import get_search_provider, is_verified_web_enabled, settings
 from titan_core.db import get_db
+from titan_core.event_log import emit_battlebuddy_event, summarize_action_names
 from titan_core.models import MemoryItem, User
 from titan_core.rules import propose_actions
 from titan_core.schemas import BrainInput, ChatMessage, ChatRequest, ChatResponse, ProposedAction, ProposedPlan, TaskRecord
@@ -568,6 +570,38 @@ def _finalize_chat_response(user_message: str, response: ChatResponse) -> ChatRe
         proposed.args = metadata
         proposed.status = "pending"
         log_action(entry)
+
+    if response.proposed_actions:
+        emit_battlebuddy_event(
+            subsystem="battlebuddy",
+            severity="NOTICE",
+            event_type="proposed_action_created",
+            summary=f"Generated {len(response.proposed_actions)} proposed action(s).",
+            details=f"Action types: {summarize_action_names(response.proposed_actions)}.",
+            confidence=max([float(getattr(action, 'confidence', 0.0) or 0.0) for action in response.proposed_actions], default=0.0),
+            risk="medium",
+            requires_approval=True,
+            approved=False,
+            status="pending",
+        )
+        for proposed_action in response.proposed_actions[:5]:
+            emit_approval_request(
+                source="battlebuddy",
+                subsystem="battlebuddy",
+                title=f"Review proposed action: {proposed_action.type}",
+                summary="BattleBuddy proposed a constrained action for local review.",
+                requested_action=proposed_action.type,
+                risk="medium",
+                confidence=float(getattr(proposed_action, "confidence", 0.0) or 0.0),
+                requires_confirmation=True,
+                status="pending",
+                created_by="battlebuddy",
+                metadata={
+                    "label": proposed_action.label,
+                    "action_id": proposed_action.action_id,
+                    "app": proposed_action.app,
+                },
+            )
     return response
 
 
@@ -599,7 +633,24 @@ def _finalize_with_metadata(
         response.source_items = source_items
     if confidence is not None:
         response.confidence = confidence
-    return _finalize_chat_response(user_message, response)
+    finalized = _finalize_chat_response(user_message, response)
+    emit_battlebuddy_event(
+        subsystem="battlebuddy",
+        severity="INFO",
+        event_type="chat_response_generated",
+        summary="BattleBuddy chat response generated.",
+        details=(
+            f"Route: {finalized.route_used or 'unknown'} | "
+            f"Source status: {finalized.source_status or 'unknown'} | "
+            f"Proposed actions: {len(finalized.proposed_actions)}"
+        ),
+        confidence=0.7,
+        risk="low",
+        requires_approval=bool(finalized.proposed_actions),
+        approved=False,
+        status="completed",
+    )
+    return finalized
 
 
 def _source_metadata(
@@ -1130,6 +1181,21 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     user = get_default_mvp_user(db)
     clean_text = req.message.strip()
     mode = safe_mode(req)
+    emit_battlebuddy_event(
+        subsystem="battlebuddy",
+        severity="INFO",
+        event_type="chat_request_received",
+        summary="BattleBuddy chat request received.",
+        details=(
+            f"Mode: {mode} | "
+            f"Web enabled: {bool(req.web_enabled)} | "
+            f"File attached: {bool(req.file_name and req.file_content)} | "
+            f"Active plan: {bool(req.active_plan)}"
+        ),
+        confidence=1.0,
+        risk="low",
+        status="recorded",
+    )
     env_web_enabled = is_verified_web_enabled()
     provider = get_search_provider()
     web_allowed = bool(req.web_enabled) and env_web_enabled

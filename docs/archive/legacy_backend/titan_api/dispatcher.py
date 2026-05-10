@@ -1,4 +1,13 @@
 """
+LEGACY / NOT ACTIVE EXECUTION PATH
+----------------------------------
+This archived dispatcher belongs to the older titan_api backend and is not on
+the active BattleBuddy runtime path.
+
+Active runtime as of 2026-05-07:
+- titan_battlebuddy.main:app
+- titan_core API modules imported by that app
+
 Titan Core - Action Dispatcher / Executor
 -----------------------------------------
 

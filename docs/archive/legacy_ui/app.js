@@ -1,4 +1,10 @@
 /*
+LEGACY / NOT ACTIVE UI CONTROLLER
+---------------------------------
+This archived JavaScript controller is preserved for reference only.
+The active BattleBuddy UI is titan_ui/index.html and does not load this file.
+This file is legacy/deprecated for the current active runtime. Do not edit unless intentionally reviving this path. See docs/ADR_RUNTIME_CONSOLIDATION.md.
+
 Titan Personal Assistant UI Controller
 --------------------------------------
 Simple frontend for Titan Core.

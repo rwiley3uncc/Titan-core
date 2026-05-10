@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 from titan_core.titan_ai_imports import enable_titan_ai_imports
@@ -16,6 +17,189 @@ from titan_shared.runtime_validation import (  # noqa: E402
     validate_imports,
     validate_writable_paths,
 )
+from titan_shared.contracts.titan_event import load_titan_events_from_path  # noqa: E402
+
+
+def validate_battlebuddy_event_helper(root: Path) -> list[str]:
+    issues: list[str] = []
+
+    try:
+        from titan_core.event_log import (
+            DEFAULT_MAX_EVENT_LOG_BYTES,
+            emit_battlebuddy_event,
+            enforce_event_log_retention,
+        )
+    except Exception as exc:
+        return [f"FAIL: Could not import titan_core.event_log safely: {exc}"]
+
+    with tempfile.TemporaryDirectory(prefix="titan-core-events-") as temp_dir:
+        event_path = Path(temp_dir) / "titan_events.jsonl"
+        wrote = emit_battlebuddy_event(
+            subsystem="battlebuddy",
+            severity="NOTICE",
+            event_type="validation",
+            summary="BattleBuddy event helper validation record.",
+            details="Validation-only summary.",
+            confidence=0.5,
+            risk="low",
+            status="completed",
+            log_path=event_path,
+        )
+        if not wrote:
+            issues.append("FAIL: BattleBuddy event helper did not report a successful write.")
+            return issues
+
+        events = load_titan_events_from_path(event_path)
+        if len(events) != 1:
+            issues.append("FAIL: BattleBuddy event helper did not produce one compatible TitanEvent record.")
+            return issues
+
+        payload = events[0].to_dict()
+        if payload.get("source") != "battlebuddy":
+            issues.append("FAIL: BattleBuddy event helper did not preserve the expected source field.")
+        if payload.get("subsystem") != "battlebuddy":
+            issues.append("FAIL: BattleBuddy event helper did not preserve the expected subsystem field.")
+        if payload.get("event_type") != "validation":
+            issues.append("FAIL: BattleBuddy event helper did not preserve the expected event_type field.")
+
+        retention_path = Path(temp_dir) / "retention_validation.jsonl"
+        archive_dir = Path(temp_dir) / "archive"
+        for index in range(5):
+            wrote = emit_battlebuddy_event(
+                subsystem="battlebuddy",
+                severity="INFO",
+                event_type="retention_validation",
+                summary=f"Retention event {index}",
+                details=f"sequence={index}",
+                confidence=0.5,
+                risk="low",
+                status="completed",
+                log_path=retention_path,
+                max_events=3,
+                max_bytes=DEFAULT_MAX_EVENT_LOG_BYTES,
+                archive_dir=archive_dir,
+            )
+            if not wrote:
+                issues.append("FAIL: BattleBuddy retention validation could not append an event safely.")
+                return issues
+
+        retained_events = load_titan_events_from_path(retention_path)
+        retained_summaries = [event.summary for event in retained_events]
+        if len(retained_events) != 3:
+            issues.append("FAIL: BattleBuddy event retention did not trim to the newest expected event count.")
+        elif retained_summaries != ["Retention event 2", "Retention event 3", "Retention event 4"]:
+            issues.append("FAIL: BattleBuddy event retention did not preserve the newest events in order.")
+
+        archived_files = sorted(archive_dir.glob("*.jsonl"))
+        if not archived_files:
+            issues.append("FAIL: BattleBuddy event retention did not archive trimmed events safely.")
+
+        oversize_path = Path(temp_dir) / "oversize_validation.jsonl"
+        for index in range(4):
+            wrote = emit_battlebuddy_event(
+                subsystem="battlebuddy",
+                severity="NOTICE",
+                event_type="size_validation",
+                summary=f"Size validation event {index}",
+                details="X" * 400,
+                confidence=0.4,
+                risk="low",
+                status="completed",
+                log_path=oversize_path,
+                max_events=10,
+                max_bytes=700,
+                archive_dir=archive_dir,
+            )
+            if not wrote:
+                issues.append("FAIL: BattleBuddy size-retention validation could not append an event safely.")
+                return issues
+
+        oversize_events = load_titan_events_from_path(oversize_path)
+        if not oversize_events:
+            issues.append("FAIL: BattleBuddy size retention removed all recent events unexpectedly.")
+        elif oversize_events[-1].summary != "Size validation event 3":
+            issues.append("FAIL: BattleBuddy size retention did not preserve the newest event.")
+
+        if not enforce_event_log_retention(Path(temp_dir) / "missing.jsonl"):
+            issues.append("FAIL: BattleBuddy event retention should succeed safely for a missing log path.")
+
+    return issues
+
+
+def validate_battlebuddy_approval_helper(root: Path) -> list[str]:
+    issues: list[str] = []
+
+    try:
+        from titan_core.approval_log import emit_approval_request
+        from titan_shared.contracts.approval_request import load_approval_requests_from_path
+    except Exception as exc:
+        return [f"FAIL: Could not import BattleBuddy approval helper safely: {exc}"]
+
+    with tempfile.TemporaryDirectory(prefix="titan-core-approvals-") as temp_dir:
+        approval_path = Path(temp_dir) / "approval_requests.jsonl"
+        wrote = emit_approval_request(
+            source="battlebuddy",
+            subsystem="battlebuddy",
+            title="Review proposed action: open_vscode",
+            summary="BattleBuddy proposed a constrained action for local review.",
+            requested_action="open_vscode",
+            risk="medium",
+            confidence=0.75,
+            requires_confirmation=True,
+            status="pending",
+            created_by="battlebuddy",
+            metadata={
+                "label": "Open VS Code",
+                "app": "vscode",
+                "log_user_message": "do not persist this",
+            },
+            log_path=approval_path,
+        )
+        if not wrote:
+            issues.append("FAIL: BattleBuddy approval helper did not report a successful write.")
+            return issues
+
+        approvals = load_approval_requests_from_path(approval_path)
+        if len(approvals) != 1:
+            issues.append("FAIL: BattleBuddy approval helper did not produce one compatible ApprovalRequest record.")
+            return issues
+
+        payload = approvals[0].to_dict()
+        if payload.get("source") != "battlebuddy":
+            issues.append("FAIL: BattleBuddy approval helper did not preserve the expected source field.")
+        if payload.get("requested_action") != "open_vscode":
+            issues.append("FAIL: BattleBuddy approval helper did not preserve the expected requested_action field.")
+        metadata = payload.get("metadata", {})
+        if "log_user_message" in metadata:
+            issues.append("FAIL: BattleBuddy approval helper should strip full user-message content from metadata.")
+
+        duplicate_wrote = emit_approval_request(
+            source="battlebuddy",
+            subsystem="battlebuddy",
+            title="Review proposed action: open_vscode",
+            summary="BattleBuddy proposed a constrained action for local review.",
+            requested_action="open_vscode",
+            risk="medium",
+            confidence=0.75,
+            requires_confirmation=True,
+            status="pending",
+            created_by="battlebuddy",
+            metadata={
+                "label": "Open VS Code",
+                "app": "vscode",
+                "action_id": payload.get("metadata", {}).get("action_id", ""),
+            },
+            log_path=approval_path,
+        )
+        if not duplicate_wrote:
+            issues.append("FAIL: BattleBuddy approval helper duplicate write path should still return safely.")
+            return issues
+
+        approvals_after_duplicate = load_approval_requests_from_path(approval_path)
+        if len(approvals_after_duplicate) != 1:
+            issues.append("FAIL: BattleBuddy approval helper should avoid duplicate pending approval records when possible.")
+
+    return issues
 
 
 def main() -> int:
@@ -25,6 +209,8 @@ def main() -> int:
     issues.extend(validate_directories([root / "titan_ui", root / "data", root / "docs"]))
     issues.extend(validate_files([root / "requirements.txt", root / "start_titan.ps1", root / "start_battlebuddy.ps1"]))
     issues.extend(validate_writable_paths([root / "data"]))
+    issues.extend(validate_battlebuddy_approval_helper(root))
+    issues.extend(validate_battlebuddy_event_helper(root))
     return print_validation_report("Titan BattleBuddy Environment Validation", issues, python_runtime_summary())
 
 

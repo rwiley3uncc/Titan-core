@@ -1,4 +1,14 @@
 """
+LEGACY / NOT ACTIVE RUNTIME PATH
+--------------------------------
+This archived backend is preserved for historical reference only.
+It is not the active Titan Core / BattleBuddy runtime.
+This file is legacy/deprecated for the current active runtime. Do not edit unless intentionally reviving this path. See docs/ADR_RUNTIME_CONSOLIDATION.md.
+
+Active runtime as of 2026-05-07:
+- titan_battlebuddy.main:app
+- compatibility wrapper: titan_core.main:app
+
 Titan Core - Application Entrypoint (Laptop MVP)
 ------------------------------------------------
 

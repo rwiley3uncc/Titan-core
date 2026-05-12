@@ -106,11 +106,26 @@ def detect_personal_intent(text: str) -> str | None:
     normalized = normalize_text(text)
     tokens = tokenize(normalized)
     has_today = has_today_reference(normalized, tokens)
+    asks_what = "what" in tokens or "whats" in tokens or "what's" in normalized
+    asks_can_you_see = "can you see" in normalized
 
     if any(phrase in normalized for phrase in ("refresh my sitrep", "refresh sitrep", "reload sitrep", "update sitrep")):
         return "refresh_sitrep"
     if any(phrase in normalized for phrase in ("read my sitrep", "read sitrep", "speak sitrep", "say my sitrep")):
         return "read_sitrep"
+    if any(phrase in normalized for phrase in (
+        "what is my next class",
+        "what's my next class",
+        "whats my next class",
+        "when is my next class",
+        "when's my next class",
+        "when is the next class",
+        "what class is next",
+        "next class",
+    )):
+        return "next_class"
+    if "canvas calendar" in normalized and ("next class" in normalized or asks_can_you_see):
+        return "next_class"
     if any(phrase in normalized for phrase in ("what should i study next", "what should i work on next", "study next", "next study block")):
         return "study_next"
     if any(phrase in normalized for phrase in ("show my open tasks", "show open tasks", "what is still open", "what's still open", "still open", "open tasks")):
@@ -140,6 +155,14 @@ def detect_personal_intent(text: str) -> str | None:
         return "daily_plan"
     if any(phrase in normalized for phrase in ("next deadline", "what is my next deadline", "what's my next deadline")):
         return "next_deadline"
+    if "canvas calendar" in normalized and asks_what:
+        if "due" in tokens or "assignment" in tokens or "deadline" in tokens:
+            return "must_do_today" if has_today else "next_deadline"
+        if "open" in tokens or "still" in tokens:
+            return "still_open"
+        if "class" in tokens:
+            return "next_class"
+        return "schedule_today"
     if any(phrase in normalized for phrase in (
         "what do i need to do today",
         "what should i do today",
@@ -151,8 +174,15 @@ def detect_personal_intent(text: str) -> str | None:
         "what's on today",
         "whats on today",
         "what do i have today",
+        "what is on my canvas calendar",
+        "what's on my canvas calendar",
+        "what is on the canvas calendar",
+        "what is my schedule today",
+        "what's my schedule today",
     )):
         return "daily_overview"
+    if asks_what and ("schedule" in tokens or "calendar" in tokens) and "class" in tokens:
+        return "next_class"
     if has_today and (
         has_token(tokens, *SCHEDULE_TOKENS)
         or "on the schedule" in normalized

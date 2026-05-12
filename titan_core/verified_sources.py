@@ -33,6 +33,7 @@ You can:
 Then I can answer from verified information."""
 
 PERSONAL_GROUNDED_INTENTS = {
+    "next_class",
     "schedule_today",
     "must_do_today",
     "still_open",

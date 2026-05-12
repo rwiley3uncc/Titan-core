@@ -171,8 +171,8 @@ def development_missing_context_response() -> ChatResponse:
 
 def missing_source_reply(intent: str, payload: dict) -> str:
     config = payload.get("configuration", {})
-    needs_canvas = intent in {"must_do_today", "still_open", "study_next", "daily_plan", "next_deadline", "daily_overview"}
-    needs_schedule = intent in {"schedule_today", "daily_plan", "daily_overview"}
+    needs_canvas = intent in {"next_class", "must_do_today", "still_open", "study_next", "daily_plan", "next_deadline", "daily_overview"}
+    needs_schedule = intent in {"next_class", "schedule_today", "daily_plan", "daily_overview"}
     sources: list[str] = []
 
     if needs_canvas and not config.get("canvas_feed_configured"):
@@ -186,6 +186,19 @@ def missing_source_reply(intent: str, payload: dict) -> str:
         return f"{GROUNDING_FALLBACK} I would need {', '.join(sources)} to answer from real sitrep/dashboard data."
 
     return f"{GROUNDING_FALLBACK} The current sitrep/dashboard data does not include enough verified information for that."
+
+
+def has_local_sitrep_sources(payload: dict) -> bool:
+    config = payload.get("configuration", {})
+    return bool(config.get("canvas_feed_configured") or config.get("outlook_feed_configured"))
+
+
+def local_sitrep_empty_reply(payload: dict, message: str) -> str:
+    generated_label = format_when(payload.get("generated_at"))
+    return (
+        f"Based on the current sitrep/dashboard data generated at {generated_label}, "
+        f"{message}"
+    )
 
 
 def format_item_line(item: dict) -> str:
@@ -235,11 +248,44 @@ def personal_assistant_response(intent: str, payload: dict) -> ChatResponse:
             proposed_actions=[_action("read_sitrep", "Read current sitrep aloud", implemented=True)],
         )
 
+    if intent == "next_class":
+        next_class = payload.get("next_class")
+        if not isinstance(next_class, dict) or not next_class:
+            if has_local_sitrep_sources(payload):
+                return ChatResponse(
+                    reply=local_sitrep_empty_reply(
+                        payload,
+                        "I do not currently see an upcoming class in the local sitrep.",
+                    ),
+                    proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+                )
+            return ChatResponse(
+                reply=missing_source_reply(intent, payload),
+                proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
+            )
+
+        title = next_class.get("course_code") or next_class.get("course_name") or next_class.get("title") or "Untitled class"
+        start_at = format_when(next_class.get("starts_at"))
+        location = next_class.get("location")
+        reply = (
+            f"Based on the current sitrep/dashboard data generated at {generated_label}, "
+            f"your next class is {title} starting {start_at}."
+        )
+        if location:
+            reply += f" Location: {location}."
+        return ChatResponse(
+            reply=reply,
+            proposed_actions=[
+                _action("show_schedule", "Review today's schedule", implemented=False),
+                _action("refresh_sitrep", "Refresh sitrep", implemented=True),
+            ],
+        )
+
     if intent == "schedule_today":
         if not today:
-            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+            if has_local_sitrep_sources(payload):
                 return ChatResponse(
-                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any scheduled items for today.",
+                    reply=local_sitrep_empty_reply(payload, "I do not see any scheduled items for today."),
                     proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
                 )
             return ChatResponse(
@@ -258,9 +304,9 @@ def personal_assistant_response(intent: str, payload: dict) -> ChatResponse:
 
     if intent == "must_do_today":
         if not must_do:
-            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+            if has_local_sitrep_sources(payload):
                 return ChatResponse(
-                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any must-do items due today.",
+                    reply=local_sitrep_empty_reply(payload, "I do not see any must-do items due today."),
                     proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
                 )
             return ChatResponse(
@@ -279,9 +325,9 @@ def personal_assistant_response(intent: str, payload: dict) -> ChatResponse:
 
     if intent == "still_open":
         if not still_open:
-            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+            if has_local_sitrep_sources(payload):
                 return ChatResponse(
-                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any still-open tasks right now.",
+                    reply=local_sitrep_empty_reply(payload, "I do not see any still-open tasks right now."),
                     proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
                 )
             return ChatResponse(
@@ -328,9 +374,9 @@ def personal_assistant_response(intent: str, payload: dict) -> ChatResponse:
 
     if intent == "daily_plan":
         if not today and not must_do and not suggested_blocks:
-            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+            if has_local_sitrep_sources(payload):
                 return ChatResponse(
-                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any schedule, must-do, or study-block items right now.",
+                    reply=local_sitrep_empty_reply(payload, "I do not see any schedule, must-do, or study-block items right now."),
                     proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
                 )
             return ChatResponse(
@@ -357,9 +403,9 @@ def personal_assistant_response(intent: str, payload: dict) -> ChatResponse:
     if intent == "next_deadline":
         candidates = [item for item in must_do if item.get("due_at")] + [item for item in still_open if item.get("due_at")]
         if not candidates:
-            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+            if has_local_sitrep_sources(payload):
                 return ChatResponse(
-                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any upcoming deadlines.",
+                    reply=local_sitrep_empty_reply(payload, "I do not see any upcoming deadlines."),
                     proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
                 )
             return ChatResponse(
@@ -382,9 +428,9 @@ def personal_assistant_response(intent: str, payload: dict) -> ChatResponse:
 
     if intent == "daily_overview":
         if not today and not must_do and not suggested_blocks:
-            if config.get("canvas_feed_configured") or config.get("outlook_feed_configured"):
+            if has_local_sitrep_sources(payload):
                 return ChatResponse(
-                    reply=f"Based on the current sitrep/dashboard data generated at {generated_label}, I do not see any scheduled items, must-do tasks, or suggested study blocks for today.",
+                    reply=local_sitrep_empty_reply(payload, "I do not see any scheduled items, must-do tasks, or suggested study blocks for today."),
                     proposed_actions=[_action("refresh_sitrep", "Refresh sitrep", implemented=True)],
                 )
             return ChatResponse(

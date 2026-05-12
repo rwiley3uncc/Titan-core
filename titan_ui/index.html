@@ -1593,6 +1593,7 @@ textarea:focus {
         <button id="stopVoiceBtn" type="button">Stop Voice</button>
         <button id="voiceInputBtn" type="button">Voice Input</button>
       </div>
+      <div id="voiceStatus" class="voice-control-value" aria-live="polite">Voice idle.</div>
     </div>
 
     <div class="dashboard">
@@ -1818,6 +1819,8 @@ textarea:focus {
     const DEFAULT_VOICE_VOLUME = 1.0;
     let availableVoices = [];
     let currentCalendarSources = [];
+    let currentSpeechUtterance = null;
+    let currentSpeechToken = 0;
     const ACTION_STATUS_LABELS = {
       pending: 'Pending',
       approved: 'Approved',
@@ -2121,6 +2124,34 @@ textarea:focus {
       document.getElementById('voiceRateValue').textContent = Number(rateInput.value).toFixed(2);
       document.getElementById('voicePitchValue').textContent = Number(pitchInput.value).toFixed(2);
       document.getElementById('voiceVolumeValue').textContent = Number(volumeInput.value).toFixed(2);
+    }
+
+    function setVoiceStatus(message, isError = false) {
+      const target = document.getElementById('voiceStatus');
+      if (!target) return;
+      target.textContent = message;
+      target.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+    }
+
+    function hasReadableSitrepText(text) {
+      const normalized = String(text || '').trim();
+      if (!normalized) return false;
+      return ![
+        'Loading sitrep...',
+        'Failed to load sitrep.',
+        'Error contacting sitrep backend.',
+      ].includes(normalized);
+    }
+
+    function isBenignSpeechError(event) {
+      const code = String((event && event.error) || '').toLowerCase();
+      return code === 'interrupted' || code === 'canceled' || code === 'cancelled';
+    }
+
+    function resetSpeechState(message = 'Voice idle.') {
+      currentSpeechUtterance = null;
+      setVoiceStatus(message);
+      updateHeaderStatus();
     }
 
     function preferredVoice(voices) {
@@ -2784,6 +2815,7 @@ textarea:focus {
 
         if (!response.ok) {
           document.getElementById('sitrepText').textContent = 'Failed to load sitrep.';
+          setVoiceStatus('Sitrep refresh failed. Voice playback needs a current sitrep.', true);
           updateHeaderStatus('error');
           return false;
         }
@@ -2800,11 +2832,13 @@ textarea:focus {
         renderList('mustDoList', data.must_do_today || [], itemCard);
         renderList('stillOpenList', data.still_open || [], itemCard);
         renderList('suggestedBlocksList', data.suggested_blocks || [], blockCard);
+        setVoiceStatus('Voice ready for the current sitrep.');
         updateHeaderStatus();
         return true;
       } catch (error) {
         console.error(error);
         document.getElementById('sitrepText').textContent = 'Error contacting sitrep backend.';
+        setVoiceStatus('Sitrep backend error. Voice playback is unavailable until the sitrep reloads.', true);
         updateHeaderStatus('error');
         return false;
       }
@@ -2838,23 +2872,27 @@ textarea:focus {
     }
 
     function speakSitrep() {
-      updateHeaderStatus('reading_sitrep');
       if (!('speechSynthesis' in window)) {
-        alert('Speech synthesis is not supported in this browser.');
-        updateHeaderStatus('error');
+        setVoiceStatus('Read Sitrep is unavailable because this browser does not support speech synthesis.', true);
+        updateHeaderStatus();
         return false;
       }
 
       const text = (latestSitrepPayload && latestSitrepPayload.spoken_text)
         || document.getElementById('sitrepText').textContent;
 
-      if (!text) {
-        updateHeaderStatus('error');
+      if (!hasReadableSitrepText(text)) {
+        setVoiceStatus('No current sitrep is available to read aloud yet. Refresh the sitrep first.', true);
+        updateHeaderStatus();
         return false;
       }
 
+      const speechToken = ++currentSpeechToken;
+      updateHeaderStatus('reading_sitrep');
+      setVoiceStatus('Reading the current sitrep aloud.');
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
+      currentSpeechUtterance = u;
       const settings = currentVoiceSettings();
       const voice = selectedVoice();
 
@@ -2868,20 +2906,43 @@ textarea:focus {
       u.rate = settings.rate;
       u.pitch = settings.pitch;
       u.volume = settings.volume;
-      u.onend = () => updateHeaderStatus();
-      u.onerror = () => updateHeaderStatus('error');
+      u.onstart = () => {
+        if (speechToken !== currentSpeechToken) return;
+        setVoiceStatus('Reading the current sitrep aloud.');
+        updateHeaderStatus('reading_sitrep');
+      };
+      u.onend = () => {
+        if (speechToken !== currentSpeechToken) return;
+        currentSpeechUtterance = null;
+        setVoiceStatus('Finished reading the current sitrep.');
+        updateHeaderStatus();
+      };
+      u.onerror = (event) => {
+        if (speechToken !== currentSpeechToken) return;
+        currentSpeechUtterance = null;
+        if (isBenignSpeechError(event)) {
+          setVoiceStatus('Voice playback stopped.');
+          updateHeaderStatus();
+          return;
+        }
+        console.error(event);
+        setVoiceStatus('Read Sitrep did not complete in this browser. The assistant stayed in read-only mode.', true);
+        updateHeaderStatus();
+      };
       window.speechSynthesis.speak(u);
       return true;
     }
 
     function stopVoice() {
+      currentSpeechToken += 1;
+      currentSpeechUtterance = null;
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
       if (recognition) {
         recognition.stop();
       }
-      updateHeaderStatus();
+      resetSpeechState('Voice playback stopped.');
     }
 
     function startVoiceInput() {

@@ -67,6 +67,71 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertIn("sitrep payload", response.source_names)
         self.assertIn("Based on the current sitrep/dashboard data", response.reply)
 
+    def test_personal_assistant_next_class_uses_local_sitrep_context(self) -> None:
+        payload = {
+            "generated_at": "2026-05-12T09:00:00",
+            "today": [],
+            "must_do_today": [],
+            "still_open": [],
+            "suggested_blocks": [],
+            "source_counts": {"canvas": 1},
+            "configuration": {
+                "canvas_feed_configured": True,
+                "outlook_feed_configured": False,
+            },
+            "next_class": {
+                "course_code": "MATH 1241",
+                "starts_at": "2026-05-12T13:00:00",
+                "location": "Fretwell 129",
+            },
+        }
+        with (
+            patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
+            patch.object(chat_api, "plan_agent_or_plan", return_value=None),
+            patch.object(chat_api, "build_sitrep_payload", return_value=payload),
+            patch.object(chat_api, "find_memory_match", return_value=None),
+        ):
+            response = chat_api.chat(
+                ChatRequest(message="can you see on my canvas calendar when my next class is", mode="personal_general"),
+                db=self.db,
+            )
+
+        self.assertEqual(response.route_used, "personal_grounded")
+        self.assertEqual(response.source_type, "sitrep")
+        self.assertEqual(response.source_status, "grounded")
+        self.assertIn("MATH 1241", response.reply)
+        self.assertIn("Based on the current sitrep/dashboard data", response.reply)
+
+    def test_personal_assistant_next_class_empty_uses_local_empty_fallback(self) -> None:
+        payload = {
+            "generated_at": "2026-05-12T09:00:00",
+            "today": [],
+            "must_do_today": [],
+            "still_open": [],
+            "suggested_blocks": [],
+            "source_counts": {"canvas": 1},
+            "configuration": {
+                "canvas_feed_configured": True,
+                "outlook_feed_configured": False,
+            },
+            "next_class": None,
+        }
+        with (
+            patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
+            patch.object(chat_api, "plan_agent_or_plan", return_value=None),
+            patch.object(chat_api, "build_sitrep_payload", return_value=payload),
+            patch.object(chat_api, "find_memory_match", return_value=None),
+        ):
+            response = chat_api.chat(
+                ChatRequest(message="what is my next class", mode="personal_general"),
+                db=self.db,
+            )
+
+        self.assertEqual(response.route_used, "personal_grounded")
+        self.assertEqual(response.source_status, "grounded")
+        self.assertIn("do not currently see an upcoming class in the local sitrep", response.reply)
+        self.assertNotIn("I don't have a verified source for that topic yet.", response.reply)
+
     def test_chat_request_parses_web_enabled_true(self) -> None:
         req = ChatRequest(message="hello", web_enabled=True)
         self.assertTrue(req.web_enabled)
@@ -544,6 +609,15 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertIn("WEB_ENABLED_STORAGE_KEY", content)
         self.assertIn("web_enabled: webEnabled", content)
         self.assertIn("console.debug('[verified_web] sending chat request'", content)
+
+    def test_frontend_read_sitrep_degrades_safely(self) -> None:
+        with open("titan_ui/index.html", "r", encoding="utf-8") as handle:
+            content = handle.read()
+        self.assertIn("id=\"voiceStatus\"", content)
+        self.assertIn("function hasReadableSitrepText", content)
+        self.assertIn("function isBenignSpeechError", content)
+        self.assertIn("Read Sitrep is unavailable because this browser does not support speech synthesis.", content)
+        self.assertIn("Read Sitrep did not complete in this browser. The assistant stayed in read-only mode.", content)
 
     def test_dynamic_config_helpers(self) -> None:
         with patch.dict("os.environ", {

@@ -3,5 +3,14 @@ __pycache__/
 *.db
 .venv/
 .env
+.local_artifacts/
 data/action_log.json
 data/*.log
+battlebuddy_*.log
+battlebuddy_*.err.log
+battlebuddy_*.out.log
+smoke_battlebuddy*.log
+smoke_battlebuddy*.err.log
+smoke_battlebuddy*.out.log
+data/events/*.jsonl
+data/approvals/

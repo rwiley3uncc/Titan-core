@@ -1,4 +1,12 @@
-# Connector Setup
+# BattleBuddy Connectors Setup
+
+Last updated: 2026-05-10
+
+This file is intentionally limited to BattleBuddy runtime configuration so it does not duplicate the ecosystem-level connector summary.
+
+Platform summary:
+
+- [Titan-Command/docs/CONNECTORS_SETUP.md](C:/Users/mouse/DEV/Titan-Command/docs/CONNECTORS_SETUP.md)
 
 ## Environment
 Copy `.env.example` to `.env` and fill in the values.
@@ -20,7 +28,7 @@ Optional:
 - `TITAN_SITREP_TIME`
 - `TITAN_STUDY_BLOCK_MINUTES`
 
-## Current status
+## BattleBuddy Runtime Status
 - Legacy single Canvas and Outlook ICS settings still work
 - Titan can also load multiple enabled calendars from `TITAN_CALENDAR_SOURCES_JSON`
 - Titan loads all enabled saved calendar sources from `data/calendar_sources.json`

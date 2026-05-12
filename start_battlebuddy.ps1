@@ -9,7 +9,7 @@ if (-not $repoRoot) {
 
 Set-Location $repoRoot
 
-$uiUrl = "http://127.0.0.1:8000/ui/index.html"
+$uiUrl = "http://127.0.0.1:8001/ui/index.html"
 
 # CHANGE THIS if your Ubuntu web server command is different
 $wslDistro = "Ubuntu"
@@ -40,7 +40,7 @@ if (-not (Test-Path $venvPath)) {
 $backendCommand = @"
 Set-Location '$repoRoot'
 . '.\.venv\Scripts\Activate.ps1'
-python -m uvicorn titan_battlebuddy.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn titan_battlebuddy.main:app --host 127.0.0.1 --port 8001 --reload
 "@
 
 Write-Host "Starting Titan BattleBuddy backend..." -ForegroundColor Cyan
@@ -57,7 +57,7 @@ Write-Host "Waiting for Titan BattleBuddy backend..." -ForegroundColor Yellow
 $online = $false
 for ($i = 1; $i -le 20; $i++) {
     try {
-        $response = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -UseBasicParsing -TimeoutSec 1
+        $response = Invoke-WebRequest -Uri "http://127.0.0.1:8001/health" -UseBasicParsing -TimeoutSec 1
         if ($response.StatusCode -eq 200) {
             $online = $true
             break
@@ -106,4 +106,3 @@ try {
 
 Write-Host "Titan BattleBuddy closed." -ForegroundColor Green
 Start-Sleep -Seconds 2
-

@@ -1,4 +1,12 @@
-# Titan Capability Inventory
+# BattleBuddy Capability Inventory
+
+Last updated: 2026-05-10
+
+This file is intentionally limited to detailed BattleBuddy capabilities.
+
+For the ecosystem-wide capability summary, use:
+
+- [Titan-Command/docs/titan_capability_inventory.md](C:/Users/mouse/DEV/Titan-Command/docs/titan_capability_inventory.md)
 
 ## 1. High-Level Summary
 Titan is currently a local FastAPI-backed assistant with a browser dashboard. The active app is defined in `titan_core/main.py` and serves a combined personal-assistant and development-assistant UI from `titan_ui/index.html`.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 from titan_core.titan_ai_imports import enable_titan_ai_imports
 from titan_core.titan_shared_imports import ensure_titan_shared_on_path
@@ -15,7 +16,6 @@ from titan_shared.runtime_validation import (  # noqa: E402
     validate_directories,
     validate_files,
     validate_imports,
-    validate_writable_paths,
 )
 from titan_shared.contracts.titan_event import load_titan_events_from_path  # noqa: E402
 
@@ -202,14 +202,76 @@ def validate_battlebuddy_approval_helper(root: Path) -> list[str]:
     return issues
 
 
+def validate_battlebuddy_data_store_helpers(root: Path) -> list[str]:
+    issues: list[str] = []
+
+    try:
+        from titan_core import calendar_store, dismissed_items_store, task_store
+        from titan_core.schemas import CalendarSourceCreate, DismissedItemCreate
+    except Exception as exc:
+        return [f"FAIL: Could not import BattleBuddy data-store helpers safely: {exc}"]
+
+    with tempfile.TemporaryDirectory(prefix="titan-core-data-store-validation-") as temp_dir:
+        temp_root = Path(temp_dir)
+        data_dir = temp_root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        tasks_path = data_dir / "tasks.json"
+        calendar_sources_path = data_dir / "calendar_sources.json"
+        dismissed_items_path = data_dir / "dismissed_items.json"
+
+        with mock.patch.object(task_store, "DATA_DIR", data_dir), mock.patch.object(task_store, "TASKS_PATH", tasks_path):
+            created_task = task_store.create_task("Validation task", None, priority=2)
+            if created_task.title != "Validation task":
+                issues.append("FAIL: BattleBuddy task store did not preserve the created task title.")
+            loaded_tasks = task_store.list_tasks(include_completed=True)
+            if len(loaded_tasks) != 1:
+                issues.append("FAIL: BattleBuddy task store did not persist the created task safely.")
+
+        with mock.patch.object(calendar_store, "DATA_DIR", data_dir), mock.patch.object(calendar_store, "CALENDAR_SOURCES_PATH", calendar_sources_path):
+            created_source = calendar_store.create_calendar_source(
+                CalendarSourceCreate(
+                    name="Validation Calendar",
+                    type="other",
+                    url="https://example.com/calendar.ics",
+                    enabled=True,
+                )
+            )
+            if created_source.name != "Validation Calendar":
+                issues.append("FAIL: BattleBuddy calendar store did not preserve the created source name.")
+            loaded_sources = calendar_store.list_calendar_sources()
+            if not any(source.id == created_source.id for source in loaded_sources):
+                issues.append("FAIL: BattleBuddy calendar store did not persist the created source safely.")
+
+        with mock.patch.object(dismissed_items_store, "DATA_DIR", data_dir), mock.patch.object(
+            dismissed_items_store,
+            "DISMISSED_ITEMS_PATH",
+            dismissed_items_path,
+        ):
+            dismissed_record = dismissed_items_store.dismiss_item(
+                DismissedItemCreate(
+                    item_id="validation-item-001",
+                    title="Validation Item",
+                    course="Validation Course",
+                    reason="validation",
+                )
+            )
+            if dismissed_record.item_id != "validation-item-001":
+                issues.append("FAIL: BattleBuddy dismissed-items store did not preserve the item id safely.")
+            if "validation-item-001" not in dismissed_items_store.dismissed_item_ids():
+                issues.append("FAIL: BattleBuddy dismissed-items store did not persist the dismissed item safely.")
+
+    return issues
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent
     issues = []
     issues.extend(validate_imports(["fastapi", "sqlalchemy", "requests", "pydantic", "titan_ai", "titan_shared", "titan_core", "titan_battlebuddy"]))
     issues.extend(validate_directories([root / "titan_ui", root / "data", root / "docs"]))
     issues.extend(validate_files([root / "requirements.txt", root / "start_titan.ps1", root / "start_battlebuddy.ps1"]))
-    issues.extend(validate_writable_paths([root / "data"]))
     issues.extend(validate_battlebuddy_approval_helper(root))
+    issues.extend(validate_battlebuddy_data_store_helpers(root))
     issues.extend(validate_battlebuddy_event_helper(root))
     return print_validation_report("Titan BattleBuddy Environment Validation", issues, python_runtime_summary())
 

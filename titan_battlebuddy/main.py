@@ -122,6 +122,8 @@ def seed_default_user() -> dict:
         db.close()
 
 
+# Keep the root debug path as a compatibility alias.
+# The preferred API route is /api/debug/verified-web via the chat router.
 @app.get("/debug/verified-web", response_class=JSONResponse)
 def debug_verified_web() -> dict:
     return {

@@ -1,7 +1,15 @@
-# Titan Runtime Map
+# BattleBuddy Runtime Map
+
+Last updated: 2026-05-10
+
+This file is intentionally limited to the BattleBuddy runtime path.
+
+For the ecosystem-wide runtime inventory, use:
+
+- [Titan-Command/docs/titan_runtime_map.md](C:/Users/mouse/DEV/Titan-Command/docs/titan_runtime_map.md)
 
 ## Active Runtime Files
-These files are on the actual runtime path when Titan is started from `titan_core/main.py`.
+These files are on the actual BattleBuddy runtime path when Titan is started from `titan_core/main.py`.
 
 ### App entry and mounted routes
 - `titan_core/main.py`
@@ -11,7 +19,9 @@ These files are on the actual runtime path when Titan is started from `titan_cor
   - Includes `/api/chat`, `/api/execute`, and `/api/sitrep` routers
 - `titan_core/api/chat.py`
   - Handles `POST /api/chat`
+  - Owns FastAPI chat routes and top-level orchestration only
   - Routes between memory save/recall, grounded personal-assistant intents, rule-based action proposals, and development-assistant LLM replies
+  - Delegates extracted helper responsibilities to focused chat helper modules
   - Also exposes `GET /api/memory`
 - `titan_core/api/execute.py`
   - Handles `POST /api/execute`
@@ -30,6 +40,16 @@ These files are on the actual runtime path when Titan is started from `titan_cor
     - `POST /api/execute`
 
 ### Active supporting runtime modules
+- `titan_core/chat_mode.py`
+  - Mode normalization, assistant-mode checks, route classification, and personal intent detection
+- `titan_core/chat_memory.py`
+  - Memory save detection, scoring, extraction, duplicate/match lookup, and memory answer formatting
+- `titan_core/chat_tasks.py`
+  - Deterministic task command parsing, due/time helpers, and task response builders
+- `titan_core/chat_actions.py`
+  - Proposed-action shaping, plan/action conversion, replace/skip/approve-next helpers, and approval/action metadata preparation
+- `titan_core/chat_responses.py`
+  - Response finalization, metadata attachment, verified-web formatting, upload sanitization, and grounded/personal response builders
 - `titan_core/config.py`
   - Loads environment-driven settings
 - `titan_core/db.py`
@@ -109,6 +129,11 @@ Starting from `titan_core/main.py`, the active dependency tree looks like this:
 These are used because active modules import them, even though they are not entrypoints or top-level routes.
 
 ### Imported by `titan_core/api/chat.py`
+- `titan_core/chat_mode.py`
+- `titan_core/chat_memory.py`
+- `titan_core/chat_tasks.py`
+- `titan_core/chat_actions.py`
+- `titan_core/chat_responses.py`
 - `titan_core/brain.py`
 - `titan_core/api/sitrep.py`
 - `titan_core/config.py`
@@ -116,6 +141,12 @@ These are used because active modules import them, even though they are not entr
 - `titan_core/models.py`
 - `titan_core/rules.py`
 - `titan_core/schemas.py`
+
+## Chat Helper Module Guidance
+
+- `titan_core/api/chat.py` should remain the route and orchestration layer.
+- Future chat-related helpers should be added to the focused helper modules above instead of growing `chat.py` again.
+- This decomposition did not change request/response schemas, verified-web fail-closed behavior, approval-gated execution behavior, or `run_brain(...)` architecture.
 
 ### Imported by `titan_core/brain.py`
 - `titan_core/schemas.py`

@@ -155,14 +155,6 @@ def plan_agent_action(user_message: str) -> AgentAction | None:
             confidence=0.85,
             reason="User intent strongly suggests refreshing the sitrep.",
         )
-    if _matches_any(normalized, weak_refresh):
-        return _build_agent_action(
-            name="refresh_sitrep",
-            description="Refresh sitrep",
-            payload={},
-            confidence=0.6,
-            reason="User mentioned the sitrep, but the refresh request is somewhat indirect.",
-        )
 
     if _matches_any(normalized, exact_read):
         return _build_agent_action(
@@ -187,6 +179,14 @@ def plan_agent_action(user_message: str) -> AgentAction | None:
             payload={},
             confidence=0.6,
             reason="User mentioned having the sitrep read aloud, but intent is somewhat uncertain.",
+        )
+    if _matches_any(normalized, weak_refresh):
+        return _build_agent_action(
+            name="refresh_sitrep",
+            description="Refresh sitrep",
+            payload={},
+            confidence=0.6,
+            reason="User mentioned the sitrep, but the refresh request is somewhat indirect.",
         )
 
     if _matches_any(normalized, exact_vscode):

@@ -4,62 +4,34 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException
 
-from titan_core.agent import AgentAction, AgentPlan, SAFE_ACTIONS, get_next_step_message, is_plan_complete, plan_agent_action, validate_agent_action
+from titan_core.agent import SAFE_ACTIONS, plan_agent_action, validate_agent_action
 from titan_core.agent_memory import get_action_summary
-from titan_core.action_log import load_action_log, log_action, make_action_log_entry
-from titan_core.approval_log import emit_approval_request
-from titan_core.event_log import emit_battlebuddy_event
+from titan_core.action_log import load_action_log
+from titan_core.execute_payloads import action_args
+from titan_core.execute_plan_steps import (
+    apply_next_pending_action_result,
+    build_plan_response,
+    get_next_pending_action,
+    log_client_execution_report,
+    normalize_actions,
+    replace_next_pending_action,
+    skip_next_pending_action,
+)
+from titan_core.execute_side_effects import (
+    emit_action_request_event,
+    emit_allowed_action_event,
+    emit_blocked_action_records,
+    emit_execution_failure_event,
+    emit_execution_result_event,
+    log_action_state,
+)
 from titan_core.executor import execute_action
 
 router = APIRouter()
 
 
-def _action_args(action: dict) -> dict:
-    return action.get("args", {}) if isinstance(action.get("args", {}), dict) else {}
-
-
-def _coerce_plan(plan_id: str, actions: list[dict]) -> AgentPlan:
-    return AgentPlan(
-        plan_id=plan_id,
-        summary="",
-        actions=[
-            AgentAction(
-                name=str(action.get("type") or action.get("action") or "unknown_action"),
-                description=str(action.get("label") or action.get("type") or "Unknown action"),
-                action_id=str(action.get("action_id") or ""),
-                created_at=float(action.get("created_at") or 0.0),
-                status=str(action.get("status") or "pending"),
-                confidence=float(action.get("confidence") or 0.0),
-                reason=str(action.get("reason") or ""),
-                payload=action.get("args", {}) if isinstance(action.get("args", {}), dict) else {},
-            )
-            for action in actions
-        ],
-    )
-
-
-def _agent_action_to_dict(action: AgentAction, user_message: str) -> dict:
-    metadata = dict(action.payload)
-    metadata["implemented"] = True
-    metadata["requires_approval"] = action.requires_approval
-    return {
-        "type": action.name,
-        "label": action.description,
-        "action_id": action.action_id,
-        "created_at": action.created_at,
-        "status": action.status,
-        "confidence": action.confidence,
-        "reason": action.reason,
-        "app": metadata.get("app"),
-        "args": {
-            **metadata,
-            "log_user_message": user_message,
-        },
-    }
-
-
 def _execute_or_approve_action(action: dict) -> dict:
-    args = _action_args(action)
+    args = action_args(action)
     user_message = str(args.get("log_user_message", ""))
     action_name = str(action.get("type") or action.get("action") or "unknown_action")
     payload = dict(args)
@@ -68,50 +40,19 @@ def _execute_or_approve_action(action: dict) -> dict:
     if not action_id:
         raise HTTPException(status_code=400, detail="action_id is required.")
 
-    log_action(
-        make_action_log_entry(
-            action_id=action_id,
-            user_message=user_message,
-            action_name=action_name,
-            payload=payload,
-            status="approved",
-            approved=True,
-            executed=False,
-            result="approved by user",
-        )
+    log_action_state(
+        action_id=action_id,
+        user_message=user_message,
+        action_name=action_name,
+        payload=payload,
+        status="approved",
+        approved=True,
+        executed=False,
+        result="approved by user",
     )
 
     if action_name not in SAFE_ACTIONS:
-        emit_approval_request(
-            source="battlebuddy",
-            subsystem="titan_core",
-            title=f"Blocked action request: {action_name}",
-            summary="A constrained action request was blocked because it is outside the current allow-list.",
-            requested_action=action_name,
-            risk="high",
-            confidence=1.0,
-            requires_confirmation=True,
-            status="blocked",
-            created_by="battlebuddy",
-            metadata={
-                "action_id": action_id,
-                "app": payload.get("app"),
-                "implemented": payload.get("implemented"),
-                "requires_approval": payload.get("requires_approval"),
-            },
-        )
-        emit_battlebuddy_event(
-            subsystem="titan_core",
-            severity="WARN",
-            event_type="constrained_action_blocked",
-            summary=f"Constrained action blocked: {action_name}.",
-            details="Action is outside the current allow-list.",
-            confidence=1.0,
-            risk="medium",
-            requires_approval=True,
-            approved=True,
-            status="failed",
-        )
+        emit_blocked_action_records(action_id=action_id, action_name=action_name, payload=payload)
         return {
             "status": "approved",
             "message": "Action approved and awaiting future implementation.",
@@ -119,78 +60,41 @@ def _execute_or_approve_action(action: dict) -> dict:
             "action_status": "approved",
         }
 
-    emit_battlebuddy_event(
-        subsystem="titan_core",
-        severity="NOTICE",
-        event_type="constrained_action_allowed",
-        summary=f"Constrained action allowed for execution: {action_name}.",
-        details="Action is inside the current allow-list and proceeding through the constrained executor.",
-        confidence=1.0,
-        risk="medium",
-        requires_approval=True,
-        approved=True,
-        status="approved",
-    )
+    emit_allowed_action_event(action_name)
 
     try:
         result = execute_action(action)
     except Exception as exc:
         error_message = str(exc) or "execution failed"
-        emit_battlebuddy_event(
-            subsystem="titan_core",
-            severity="ERROR",
-            event_type="constrained_action_failed",
-            summary=f"Constrained action failed: {action_name}.",
-            details=f"Failure type: {type(exc).__name__}.",
-            confidence=1.0,
-            risk="high",
-            requires_approval=True,
-            approved=True,
+        emit_execution_failure_event(action_name=action_name, failure_type=type(exc).__name__)
+        log_action_state(
+            action_id=action_id,
+            user_message=user_message,
+            action_name=action_name,
+            payload=payload,
             status="failed",
-        )
-        log_action(
-            make_action_log_entry(
-                action_id=action_id,
-                user_message=user_message,
-                action_name=action_name,
-                payload=payload,
-                status="failed",
-                approved=True,
-                executed=False,
-                result=error_message,
-            )
+            approved=True,
+            executed=False,
+            result=error_message,
         )
         return {"status": "error", "message": error_message, "action_id": action_id, "action_status": "failed"}
 
     success = result.get("status") == "executed"
     final_status = "executed" if success else "failed"
-    emit_battlebuddy_event(
-        subsystem="titan_core",
-        severity="OK" if success else "ERROR",
-        event_type="constrained_action_executed" if success else "constrained_action_failed",
-        summary=(
-            f"Constrained action executed: {action_name}."
-            if success else
-            f"Constrained action returned a non-executed result: {action_name}."
-        ),
-        details=f"Executor status: {result.get('status', 'unknown')}.",
-        confidence=1.0 if success else 0.8,
-        risk="medium" if success else "high",
-        requires_approval=True,
-        approved=True,
-        status="completed" if success else "failed",
+    emit_execution_result_event(
+        action_name=action_name,
+        success=success,
+        executor_status=str(result.get("status", "unknown")),
     )
-    log_action(
-        make_action_log_entry(
-            action_id=action_id,
-            user_message=user_message,
-            action_name=action_name,
-            payload=payload,
-            status=final_status,
-            approved=True,
-            executed=success,
-            result=result.get("message") or result.get("status", ""),
-        )
+    log_action_state(
+        action_id=action_id,
+        user_message=user_message,
+        action_name=action_name,
+        payload=payload,
+        status=final_status,
+        approved=True,
+        executed=success,
+        result=result.get("message") or result.get("status", ""),
     )
     return {
         **result,
@@ -201,7 +105,7 @@ def _execute_or_approve_action(action: dict) -> dict:
 
 @router.post("/execute")
 def execute(action: dict):
-    args = _action_args(action)
+    args = action_args(action)
     user_message = str(args.get("log_user_message", ""))
     action_name = str(action.get("type") or action.get("action") or "unknown_action")
     payload = dict(args)
@@ -210,63 +114,15 @@ def execute(action: dict):
     if not action_id:
         raise HTTPException(status_code=400, detail="action_id is required.")
 
-    emit_battlebuddy_event(
-        subsystem="titan_core",
-        severity="INFO",
-        event_type="constrained_action_requested",
-        summary=f"Constrained action execution requested: {action_name}.",
-        details=f"Client execution payload present: {isinstance(action.get('client_execution'), dict)}.",
-        confidence=1.0,
-        risk="medium",
-        requires_approval=True,
-        approved=False,
-        status="pending",
+    emit_action_request_event(
+        action_name=action_name,
+        client_execution_present=isinstance(action.get("client_execution"), dict),
     )
 
     client_execution = action.get("client_execution")
     if isinstance(client_execution, dict):
-        status = str(client_execution.get("status") or "").strip().lower()
-        result = str(client_execution.get("result", ""))
-        if status not in {"approved", "cancelled", "executed", "failed", "skipped", "replaced"}:
-            raise HTTPException(status_code=400, detail="client_execution.status must be approved, cancelled, executed, failed, skipped, or replaced.")
-        log_action(
-            make_action_log_entry(
-                action_id=action_id,
-                user_message=user_message,
-                action_name=action_name,
-                payload=payload,
-                status=status,
-                approved=status in {"approved", "executed"},
-                executed=status == "executed",
-                result=result,
-            )
-        )
-        emit_battlebuddy_event(
-            subsystem="titan_core",
-            severity="NOTICE" if status in {"approved", "executed"} else "WARN",
-            event_type="constrained_action_client_reported",
-            summary=f"Client reported constrained action status: {status}.",
-            details=f"Action: {action_name}.",
-            confidence=0.9,
-            risk="medium",
-            requires_approval=True,
-            approved=status in {"approved", "executed"},
-            status="completed" if status in {"approved", "executed"} else "failed",
-        )
-        return {
-            "status": "logged",
-            "message": result or f"Action status recorded as {status}.",
-            "action_id": action_id,
-            "action_status": status,
-        }
+        return log_client_execution_report(action=action, client_execution=client_execution)
     return _execute_or_approve_action(action)
-
-
-def _next_pending_index(actions: list[dict]) -> int | None:
-    for index, action in enumerate(actions):
-        if str(action.get("status") or "pending").strip().lower() == "pending":
-            return index
-    return None
 
 
 @router.post("/plan/approve-next")
@@ -279,32 +135,15 @@ def approve_next_plan_step(payload: dict) -> dict:
     if not isinstance(actions, list):
         raise HTTPException(status_code=400, detail="actions must be a list.")
 
-    updated_actions: list[dict] = []
+    updated_actions = normalize_actions(actions)
+    pending_index, target_action = get_next_pending_action(updated_actions)
 
-    for index, item in enumerate(actions):
-        if isinstance(item, dict):
-            action = dict(item)
-            action["status"] = str(action.get("status") or "pending").strip().lower()
-            updated_actions.append(action)
-    next_pending_index = _next_pending_index(updated_actions)
+    if pending_index is None or target_action is None:
+        return build_plan_response(plan_id=plan_id, actions=updated_actions)
 
-    if next_pending_index is None:
-        plan = _coerce_plan(plan_id, updated_actions)
-        return {
-            "updated_actions": updated_actions,
-            "plan_complete": is_plan_complete(plan),
-            "next_step_message": get_next_step_message(plan),
-        }
-
-    target_action = updated_actions[next_pending_index]
     result = _execute_or_approve_action(target_action)
-    target_action["status"] = str(result.get("action_status") or target_action.get("status") or "pending").lower()
-    plan = _coerce_plan(plan_id, updated_actions)
-    return {
-        "updated_actions": updated_actions,
-        "plan_complete": is_plan_complete(plan),
-        "next_step_message": get_next_step_message(plan),
-    }
+    updated_actions = apply_next_pending_action_result(updated_actions, result)
+    return build_plan_response(plan_id=plan_id, actions=updated_actions)
 
 
 @router.post("/plan/skip-next")
@@ -317,37 +156,9 @@ def skip_next_plan_step(payload: dict) -> dict:
     if not isinstance(actions, list):
         raise HTTPException(status_code=400, detail="actions must be a list.")
 
-    updated_actions: list[dict] = []
-    for item in actions:
-        if isinstance(item, dict):
-            action = dict(item)
-            action["status"] = str(action.get("status") or "pending").strip().lower()
-            updated_actions.append(action)
-
-    next_pending_index = _next_pending_index(updated_actions)
-    if next_pending_index is not None:
-        target_action = updated_actions[next_pending_index]
-        target_action["status"] = "skipped"
-        args = _action_args(target_action)
-        log_action(
-            make_action_log_entry(
-                action_id=str(target_action.get("action_id") or ""),
-                user_message=str(args.get("log_user_message", "")),
-                action_name=str(target_action.get("type") or target_action.get("action") or "unknown_action"),
-                payload=dict(args),
-                status="skipped",
-                approved=False,
-                executed=False,
-                result="skipped by user",
-            )
-        )
-
-    plan = _coerce_plan(plan_id, updated_actions)
-    return {
-        "updated_actions": updated_actions,
-        "plan_complete": is_plan_complete(plan),
-        "next_step_message": get_next_step_message(plan),
-    }
+    updated_actions = normalize_actions(actions)
+    updated_actions = skip_next_pending_action(updated_actions)
+    return build_plan_response(plan_id=plan_id, actions=updated_actions)
 
 
 @router.post("/plan/replace-next")
@@ -367,61 +178,18 @@ def replace_next_plan_step(payload: dict) -> dict:
     if not validate_agent_action(replacement_action):
         raise HTTPException(status_code=400, detail="No valid safe replacement action was found.")
 
-    updated_actions: list[dict] = []
-    for item in actions:
-        if isinstance(item, dict):
-            action = dict(item)
-            action["status"] = str(action.get("status") or "pending").strip().lower()
-            updated_actions.append(action)
+    updated_actions = normalize_actions(actions)
 
-    next_pending_index = _next_pending_index(updated_actions)
-    if next_pending_index is None:
-        plan = _coerce_plan(plan_id, updated_actions)
-        return {
-            "updated_actions": updated_actions,
-            "plan_complete": is_plan_complete(plan),
-            "next_step_message": get_next_step_message(plan),
-            "replaced": False,
-        }
+    pending_index, _ = get_next_pending_action(updated_actions)
+    if pending_index is None:
+        return build_plan_response(plan_id=plan_id, actions=updated_actions, replaced=False)
 
-    old_action = updated_actions[next_pending_index]
-    old_action["status"] = "replaced"
-    old_args = _action_args(old_action)
-    log_action(
-        make_action_log_entry(
-            action_id=str(old_action.get("action_id") or ""),
-            user_message=str(old_args.get("log_user_message", "")),
-            action_name=str(old_action.get("type") or old_action.get("action") or "unknown_action"),
-            payload=dict(old_args),
-            status="replaced",
-            approved=False,
-            executed=False,
-            result="replaced by user",
-        )
-    )
-
-    replacement_payload = _agent_action_to_dict(replacement_action, user_message)
-    log_entry = make_action_log_entry(
-        action_id=str(replacement_payload.get("action_id") or ""),
+    updated_actions, replaced = replace_next_pending_action(
+        actions=updated_actions,
+        replacement_action=replacement_action,
         user_message=user_message,
-        action_name=str(replacement_payload.get("type") or "unknown_action"),
-        payload=_action_args(replacement_payload),
-        status="pending",
-        approved=False,
-        executed=False,
-        result="proposed",
     )
-    replacement_payload["args"]["log_timestamp"] = log_entry.timestamp
-    log_action(log_entry)
-
-    updated_actions.insert(next_pending_index + 1, replacement_payload)
-    plan = _coerce_plan(plan_id, updated_actions)
-    return {
-        "updated_actions": updated_actions,
-        "plan_complete": is_plan_complete(plan),
-        "next_step_message": get_next_step_message(plan),
-        "replaced": True,
-    }
+    return build_plan_response(plan_id=plan_id, actions=updated_actions, replaced=replaced)
 
 
 @router.get("/action-log")

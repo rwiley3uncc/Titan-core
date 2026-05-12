@@ -1,40 +1,26 @@
-# Agent System Overview
+# BattleBuddy Agent Notes
 
-## Overview
-Titan Agent is a guided action layer for the Titan assistant. It turns user requests into reviewable actions and step-by-step plans so the user stays in control.
+Last updated: 2026-05-10
 
-## Action System
-- Titan proposes actions before anything runs.
-- Each proposed action includes an action id, timestamp, status, confidence score, and short reason.
-- The UI presents actions for approval, cancellation, or plan-based review.
-- Executable actions stay behind the backend allow-list.
+This file is intentionally scoped to BattleBuddy-only notes so it does not duplicate the broader agent architecture docs.
 
-## Plan System
-- Titan can return a multi-step plan for broader requests such as "start my day."
-- Plans include a summary, ordered actions, the current step, and a next-step message.
-- Steps move forward one at a time through approve, skip, or replace flows.
-- A plan is complete when no steps remain in `pending`.
+Canonical ecosystem agent design:
 
-## Chat Control
-- Natural language can guide the active plan.
-- Users can approve the next step, skip the current step, or replace it through normal chat phrasing.
-- Chat control routes into the same backend endpoints used by the manual plan buttons.
+- [Titan-Command/docs/AGENT_SYSTEM_OVERVIEW.md](C:/Users/mouse/DEV/Titan-Command/docs/AGENT_SYSTEM_OVERVIEW.md)
+- [Titan-Command/docs/AGENT_FRAMEWORK_PLAN.md](C:/Users/mouse/DEV/Titan-Command/docs/AGENT_FRAMEWORK_PLAN.md)
 
-## Memory and Suggestions
-- Titan keeps append-only lifecycle history in `data/action_log.json`.
-- `agent_memory.py` summarizes recent behavior and common patterns such as most skipped or most approved actions.
-- When behavior history is strong enough, Titan can suggest an optional replacement for the current plan step.
-- Suggestions include a confidence score and a short explanation.
+## Current BattleBuddy Reality
 
-## Safety Model
-- No auto-execution of proposed actions
-- Allow-list only for executable actions
-- Approval required before execution
-- Full lifecycle logging for actions and plan changes
-- Plan progression is limited to one step at a time
+BattleBuddy currently has partial action-proposal behavior, not a full platform agent stack.
 
-## Limitations
-- No autonomous execution
-- No unrestricted external system control
-- Suggestions are pattern-based, not ML-driven
-- Behavior-aware suggestions depend on available local history
+- chat may return reviewable proposed actions
+- executable actions remain allow-listed and approval-gated
+- plan/reviewer/executor/auditor layering is not implemented here as a full subsystem
+
+## Local Files Still Relevant
+
+- `titan_core/agent.py`
+- `titan_core/agent_memory.py`
+- `titan_core/agent_smoke.py`
+
+Use this file only for BattleBuddy-local notes. Use Titan Command docs for platform-level agent behavior, safety boundaries, and future architecture.

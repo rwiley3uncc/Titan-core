@@ -1,49 +1,57 @@
-# Titan BattleBuddy
+# Titan BattleBuddy / Titan Core
 
-Titan BattleBuddy is the user-facing controller and application gateway for the
-Titan platform.
+This repo currently hosts the active BattleBuddy runtime plus the transitional `titan_core` compatibility namespace.
 
-It continues to own:
+Current synchronized runtime:
 
-- the FastAPI app and routes
-- UI delivery
-- sitrep and verified-source flows
-- memory, task, and settings integration
-- action planning and execution endpoints
+- `Role`: personal assistant shell
+- `Port`: `8001`
+- `UI`: `http://127.0.0.1:8001/ui/index.html`
 
-Titan-AI now owns the AI orchestration path, including prompt assembly, local
-model routing, and reply generation. Titan BattleBuddy collects application context
-and calls Titan-AI through a stable interface.
+Canonical local runtime map:
 
-Migration note:
+- `Titan Command`: `http://127.0.0.1:8000/`
+- `BattleBuddy`: `http://127.0.0.1:8001/ui/index.html`
+- `Titan Sentry`: `http://127.0.0.1:8002/ui/index.html`
+- `Titan Forge`: `http://127.0.0.1:8003/ui/index.html`
 
-- `titan_battlebuddy` is the new public namespace
-- `titan_core` remains available temporarily for compatibility
-- old startup commands and URLs are still supported during the staged rename
+Recommended startup:
 
-## Startup Commands
-
-New:
-
-```text
-python -m uvicorn titan_battlebuddy.main:app --reload
+```powershell
+cd C:\Users\mouse\DEV\Titan-core
+python -m uvicorn titan_battlebuddy.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-Compatibility path:
+Compatibility startup:
 
-```text
-python -m uvicorn titan_core.main:app --reload
+```powershell
+python -m uvicorn titan_core.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-Validation commands:
+Validation:
 
-```text
+```powershell
 python run_battlebuddy_migration_tests.py
 python run_environment_validation.py
 ```
 
-## Local-Only Design
+BattleBuddy chat architecture:
 
-Titan BattleBuddy remains a local controller and UI gateway. It keeps runtime,
-routes, sitrep handling, settings, and action-control behavior local while
-delegating AI reply orchestration to Titan-AI.
+- `titan_core/api/chat.py` is the active FastAPI route and top-level orchestration layer for chat.
+- Helper logic that used to accumulate inside `chat.py` is now split across focused modules:
+  - `titan_core/chat_mode.py`: mode normalization, assistant-mode checks, route classification, personal intent detection
+  - `titan_core/chat_memory.py`: memory save detection, scoring, extraction, duplicate/match lookup, memory answer formatting
+  - `titan_core/chat_tasks.py`: deterministic task command parsing, due/time helpers, task response builders
+  - `titan_core/chat_actions.py`: proposed-action shaping, plan/action conversion, replace/skip/approve-next helpers, approval/action metadata preparation
+  - `titan_core/chat_responses.py`: response finalization, metadata attachment, verified-web formatting, upload sanitization, grounded/personal response builders
+- Future chat-related helpers should be added to the appropriate helper module instead of growing `titan_core/api/chat.py` back into a monolith.
+
+Important note:
+
+- Some historical launcher scripts and older docs still reference legacy BattleBuddy `8000` behavior. The canonical runtime map above and the synchronized Titan ecosystem documentation treat `8001` as the active side-by-side BattleBuddy runtime port.
+
+Documentation:
+
+- [BattleBuddy](C:/Users/mouse/DEV/Titan-AI/docs/BATTLEBUDDY.md)
+- [Architecture](C:/Users/mouse/DEV/Titan-AI/docs/ARCHITECTURE.md)
+- [API Reference](C:/Users/mouse/DEV/Titan-AI/docs/API_REFERENCE.md)

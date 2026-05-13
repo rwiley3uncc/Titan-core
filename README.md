@@ -1,10 +1,12 @@
+<!-- Copyright (c) 2026 Ron Wiley. All rights reserved. -->
+
 # Titan BattleBuddy / Titan Core
 
 This repo currently hosts the active BattleBuddy runtime plus the transitional `titan_core` compatibility namespace.
 
 Current synchronized runtime:
 
-- `Role`: personal assistant shell
+- `Role`: BattleBuddy interaction shell
 - `Port`: `8001`
 - `UI`: `http://127.0.0.1:8001/ui/index.html`
 
@@ -15,18 +17,27 @@ Canonical local runtime map:
 - `Titan Sentry`: `http://127.0.0.1:8002/ui/index.html`
 - `Titan Forge`: `http://127.0.0.1:8003/ui/index.html`
 
-Recommended startup:
+Recommended operator startup:
+
+1. Start Titan Command on `8000`.
+2. Use Titan Command to launch BattleBuddy when you need the runtime.
+
+Direct local runtime startup, if needed for debugging or isolated validation:
 
 ```powershell
-cd C:\Users\mouse\DEV\Titan-core
-python -m uvicorn titan_battlebuddy.main:app --reload --host 127.0.0.1 --port 8001
+cd <repo-root>
+python -m uvicorn titan_battlebuddy.main:app --host 127.0.0.1 --port 8001
 ```
 
-Compatibility startup:
+Compatibility startup, for namespace-transition debugging only:
 
 ```powershell
-python -m uvicorn titan_core.main:app --reload --host 127.0.0.1 --port 8001
+python -m uvicorn titan_core.main:app --host 127.0.0.1 --port 8001
 ```
+
+Expected readiness check:
+
+- `GET http://127.0.0.1:8001/health` returns success before relying on BattleBuddy UI or sitrep routes.
 
 Validation:
 
@@ -52,6 +63,7 @@ Important note:
 
 Documentation:
 
-- [BattleBuddy](C:/Users/mouse/DEV/Titan-AI/docs/BATTLEBUDDY.md)
-- [Architecture](C:/Users/mouse/DEV/Titan-AI/docs/ARCHITECTURE.md)
-- [API Reference](C:/Users/mouse/DEV/Titan-AI/docs/API_REFERENCE.md)
+- [Titan Platform Identity](../Titan-shared/docs/TITAN_PLATFORM_IDENTITY.md)
+- [BattleBuddy](../Titan-AI/docs/BATTLEBUDDY.md)
+- [Architecture](../Titan-shared/docs/TITAN_TECHNICAL_ARCHITECTURE.md)
+- [API Reference](../Titan-AI/docs/API_REFERENCE.md)

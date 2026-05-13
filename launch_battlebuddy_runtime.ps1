@@ -1,5 +1,7 @@
 # Titan BattleBuddy runtime-only launcher
 # Starts the BattleBuddy runtime without opening a browser or binding shutdown to UI closure.
+# Copyright (c) 2026 Ron Wiley
+# All rights reserved.
 
 $repoRoot = $PSScriptRoot
 if (-not $repoRoot) {

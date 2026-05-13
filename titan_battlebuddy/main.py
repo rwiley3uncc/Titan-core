@@ -4,6 +4,9 @@ BattleBuddy is the user-facing operational assistant/controller layer for the
 Titan platform. Titan-AI now owns the AI engine path.
 """
 
+# Copyright (c) 2026 Ron Wiley
+# All rights reserved.
+
 from __future__ import annotations
 
 from pathlib import Path

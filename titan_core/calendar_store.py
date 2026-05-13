@@ -50,8 +50,13 @@ def _normalized_type(value: str | None) -> str:
 
 def _ensure_store() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def initialize_calendar_sources_store() -> list[CalendarSourceRecord]:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not CALENDAR_SOURCES_PATH.exists():
         _save_sources(_default_sources())
+    return _load_sources()
 
 
 def _migrate_record(item: dict, created_at_fallback: str) -> CalendarSourceRecord | None:
@@ -71,27 +76,45 @@ def _migrate_record(item: dict, created_at_fallback: str) -> CalendarSourceRecor
         return None
 
 
-def _load_sources() -> list[CalendarSourceRecord]:
+def _merged_default_records(records: list[CalendarSourceRecord]) -> list[CalendarSourceRecord]:
+    if not records:
+        return _default_sources()
+
+    merged = list(records)
+    existing_ids = {record.id for record in merged}
+    for default in _default_sources():
+        if default.id not in existing_ids:
+            merged.append(default)
+    return merged
+
+
+def _load_sources_with_diagnostics() -> tuple[list[CalendarSourceRecord], list[str]]:
     _ensure_store()
-    raw = json.loads(CALENDAR_SOURCES_PATH.read_text(encoding="utf-8"))
+    if not CALENDAR_SOURCES_PATH.exists():
+        return _default_sources(), ["Local calendar source storage is missing; using in-memory defaults."]
+
+    try:
+        raw = json.loads(CALENDAR_SOURCES_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return _default_sources(), ["Local calendar source storage is missing; using in-memory defaults."]
+    except json.JSONDecodeError:
+        return _default_sources(), ["Local calendar source storage is malformed; using in-memory defaults."]
+    except OSError:
+        return _default_sources(), ["Local calendar source storage is unavailable; using in-memory defaults."]
+
     if not isinstance(raw, list):
-        records = _default_sources()
-        _save_sources(records)
-        return records
+        return _default_sources(), ["Local calendar source storage is malformed; using in-memory defaults."]
 
     created_at_fallback = datetime.now().isoformat()
     records = [record for record in (_migrate_record(item, created_at_fallback) for item in raw) if record is not None]
     if not records:
-        records = _default_sources()
-        _save_sources(records)
-        return records
+        return _default_sources(), ["Local calendar source storage is malformed; using in-memory defaults."]
 
-    existing_ids = {record.id for record in records}
-    for default in _default_sources():
-        if default.id not in existing_ids:
-            records.append(default)
+    return _merged_default_records(records), []
 
-    _save_sources(records)
+
+def _load_sources() -> list[CalendarSourceRecord]:
+    records, _warnings = _load_sources_with_diagnostics()
     return records
 
 
@@ -115,6 +138,10 @@ def validate_calendar_url(url: str) -> bool:
 
 def list_calendar_sources() -> list[CalendarSourceRecord]:
     return _load_sources()
+
+
+def list_calendar_sources_with_diagnostics() -> tuple[list[CalendarSourceRecord], list[str]]:
+    return _load_sources_with_diagnostics()
 
 
 def get_calendar_source(source_id: str) -> CalendarSourceRecord | None:
@@ -177,3 +204,9 @@ def delete_calendar_source(source_id: str) -> bool:
         return False
     _save_sources(updated)
     return True
+
+
+def repair_calendar_sources_store() -> list[CalendarSourceRecord]:
+    records = _load_sources()
+    _save_sources(records)
+    return records

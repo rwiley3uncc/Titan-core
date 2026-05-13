@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, HTTPException, Query
 
 from titan_core.canvas_feed import import_canvas_ics_from_url
-from titan_core.calendar_store import list_calendar_sources
+from titan_core.calendar_store import list_calendar_sources_with_diagnostics
 from titan_core.config import settings
 from titan_core.dismissed_items_store import (
     dismiss_item,
@@ -334,11 +334,13 @@ def _merge_calendar_items(items: list[PlannerItem], source_names: dict[str, str]
     return merged, source_details
 
 
-def _calendar_source_specs() -> tuple[list[dict[str, str]], list[str]]:
+def _calendar_source_specs() -> tuple[list[dict[str, str]], list[str], list[object]]:
     specs: list[dict[str, str]] = []
     warnings: list[str] = []
     seen: set[tuple[str, str]] = set()
     env_sources = settings.configured_calendar_sources()
+    saved_sources, store_warnings = list_calendar_sources_with_diagnostics()
+    warnings.extend(store_warnings)
 
     def add_spec(*, source_id: str, source_name: str, source_type: str, url: str) -> None:
         normalized_type = source_type.strip().lower()
@@ -358,7 +360,7 @@ def _calendar_source_specs() -> tuple[list[dict[str, str]], list[str]]:
             }
         )
 
-    for source in list_calendar_sources():
+    for source in saved_sources:
         if not source.enabled:
             continue
         add_spec(
@@ -401,11 +403,11 @@ def _calendar_source_specs() -> tuple[list[dict[str, str]], list[str]]:
     elif settings.outlook_calendar_email:
         warnings.append("Outlook target account is set, but TITAN_OUTLOOK_ICS_URL is missing.")
 
-    return specs, warnings
+    return specs, warnings, saved_sources
 
 
-def _load_calendar_items() -> tuple[list[PlannerItem], dict[str, int], list[str], dict[str, str]]:
-    specs, warnings = _calendar_source_specs()
+def _load_calendar_items() -> tuple[list[PlannerItem], dict[str, int], list[str], dict[str, str], list[object]]:
+    specs, warnings, saved_sources = _calendar_source_specs()
     calendar_items: list[PlannerItem] = []
     source_counts: dict[str, int] = {}
     source_names: dict[str, str] = {}
@@ -431,7 +433,7 @@ def _load_calendar_items() -> tuple[list[PlannerItem], dict[str, int], list[str]
         except Exception as exc:
             warnings.append(f"{source_name} feed import failed: {exc}")
 
-    return calendar_items, source_counts, warnings, source_names
+    return calendar_items, source_counts, warnings, source_names, saved_sources
 
 
 def _filter_dismissed_overdue(items: list[PlannerItem], now: datetime, dismissed_ids: set[str]) -> list[PlannerItem]:
@@ -583,7 +585,7 @@ def build_sitrep_payload(
     all_items.extend(task_items)
     source_counts["titan_tasks"] = len(task_items)
 
-    calendar_items, calendar_source_counts, calendar_warnings, calendar_source_names = _load_calendar_items()
+    calendar_items, calendar_source_counts, calendar_warnings, calendar_source_names, saved_sources = _load_calendar_items()
     merged_calendar_items, source_details = _merge_calendar_items(calendar_items, calendar_source_names)
     all_items.extend(merged_calendar_items)
     all_items.sort(key=_item_sort_key)
@@ -613,7 +615,6 @@ def build_sitrep_payload(
         (assignment_buckets["due_tomorrow"] + assignment_buckets["due_this_week"])[:3],
         source_details,
     )
-    saved_sources = [source for source in list_calendar_sources() if source.enabled]
     canvas_feed_configured = (
         any(source.type == "canvas" for source in saved_sources)
         or any(source["type"] == "canvas" for source in settings.configured_calendar_sources())

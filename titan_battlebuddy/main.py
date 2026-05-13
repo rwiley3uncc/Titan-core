@@ -29,9 +29,10 @@ import titan_core.models
 
 ensure_titan_shared_on_path()
 
-from titan_shared.logging_utils import configure_local_logging  # noqa: E402
+from titan_shared.logging_utils import configure_local_logging, get_logger  # noqa: E402
 
 configure_local_logging("INFO")
+LOGGER = get_logger(__name__)
 
 
 app = FastAPI(
@@ -48,7 +49,7 @@ UI_DIR = BASE_DIR.parent / "titan_ui"
 if UI_DIR.exists():
     app.mount("/ui", StaticFiles(directory=UI_DIR, html=True), name="ui")
 else:
-    print(f"[WARNING] titan_ui folder not found at: {UI_DIR}")
+    LOGGER.warning("titan_ui folder not found at: %s", UI_DIR)
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(calendar_sources_router, prefix="/api")

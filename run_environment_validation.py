@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import argparse
+import os
+import subprocess
+import sys
+import time
 import tempfile
 from pathlib import Path
+import urllib.error
+import urllib.request
 from unittest import mock
 
 from titan_core.titan_ai_imports import enable_titan_ai_imports
@@ -18,6 +25,104 @@ from titan_shared.runtime_validation import (  # noqa: E402
     validate_imports,
 )
 from titan_shared.contracts.titan_event import load_titan_events_from_path  # noqa: E402
+
+
+def _http_ok(url: str, *, timeout_seconds: float = 2.0) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
+            return int(getattr(response, "status", 0)) == 200
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return False
+
+
+def _run_startup_gate(root: Path, *, host: str, port: int, timeout_seconds: float) -> int:
+    title = "Titan BattleBuddy Startup Gate"
+    details = python_runtime_summary()
+    details.update({
+        "host": host,
+        "port": str(port),
+        "startup_command": f"{sys.executable} -m uvicorn titan_battlebuddy.main:app --host {host} --port {port}",
+    })
+    issues: list[str] = []
+    process: subprocess.Popen[str] | None = None
+    health_url = f"http://{host}:{port}/health"
+
+    if _http_ok(health_url):
+        issues.append(f"ENVIRONMENT_ISSUE: Startup gate requires {health_url} to be free before validation.")
+        return print_validation_report(title, issues, details)
+
+    env = dict(os.environ)
+
+    with tempfile.TemporaryDirectory(prefix="titan-battlebuddy-startup-gate-") as temp_dir:
+        temp_root = Path(temp_dir)
+        temp_db_path = temp_root / f"validation_battlebuddy_{port}.db"
+        temp_event_path = temp_root / "events" / "titan_events.jsonl"
+        temp_archive_dir = temp_root / "events" / "archive"
+        env.setdefault("DATABASE_URL", f"sqlite:///{temp_db_path.as_posix()}")
+        startup_script = "\n".join([
+            "from pathlib import Path",
+            "import uvicorn",
+            "import titan_core.event_log as event_log",
+            f"event_log.EVENT_LOG_PATH = Path(r'{str(temp_event_path)}')",
+            f"event_log.EVENTS_DIR = Path(r'{str(temp_event_path.parent)}')",
+            f"event_log.EVENT_ARCHIVE_DIR = Path(r'{str(temp_archive_dir)}')",
+            "from titan_battlebuddy.main import app",
+            f"uvicorn.run(app, host={host!r}, port={port}, log_level='warning')",
+        ])
+
+        try:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    startup_script,
+                ],
+                cwd=root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+            )
+        except OSError as error:
+            issues.append(f"ENVIRONMENT_ISSUE: Could not start BattleBuddy startup gate process: {error}")
+            return print_validation_report(title, issues, details)
+
+        started = False
+        try:
+            deadline = time.perf_counter() + timeout_seconds
+            while time.perf_counter() < deadline:
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate(timeout=2)
+                    issues.append("FAIL: BattleBuddy startup gate process exited before the health endpoint became ready.")
+                    if stdout.strip():
+                        issues.append(f"FAIL: BattleBuddy startup stdout: {stdout.strip()}")
+                    if stderr.strip():
+                        issues.append(f"FAIL: BattleBuddy startup stderr: {stderr.strip()}")
+                    return print_validation_report(title, issues, details)
+                if _http_ok(health_url):
+                    started = True
+                    break
+                time.sleep(0.5)
+
+            if not started:
+                issues.append(f"FAIL: BattleBuddy startup gate did not reach {health_url} within {timeout_seconds:.1f}s.")
+                return print_validation_report(title, issues, details)
+        finally:
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=10)
+
+        if _http_ok(health_url):
+            issues.append("FAIL: BattleBuddy startup gate left the health endpoint running after shutdown.")
+
+        if temp_event_path.exists() and not str(temp_event_path).startswith(temp_dir):
+            issues.append("FAIL: BattleBuddy startup gate wrote event data outside the temporary validation root.")
+
+        return print_validation_report(title, issues, details)
 
 
 def validate_battlebuddy_event_helper(root: Path) -> list[str]:
@@ -265,7 +370,17 @@ def validate_battlebuddy_data_store_helpers(root: Path) -> list[str]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Titan BattleBuddy environment and startup validation.")
+    parser.add_argument("--startup-gate", action="store_true", help="Run the launcher-neutral BattleBuddy startup gate.")
+    parser.add_argument("--host", default="127.0.0.1", help="Host for startup-gate validation.")
+    parser.add_argument("--port", type=int, default=8001, help="Port for startup-gate validation.")
+    parser.add_argument("--timeout-seconds", type=float, default=20.0, help="Startup-gate readiness timeout.")
+    args = parser.parse_args()
+
     root = Path(__file__).resolve().parent
+    if args.startup_gate:
+        return _run_startup_gate(root, host=args.host, port=args.port, timeout_seconds=args.timeout_seconds)
+
     issues = []
     issues.extend(validate_imports(["fastapi", "sqlalchemy", "requests", "pydantic", "titan_ai", "titan_shared", "titan_core", "titan_battlebuddy"]))
     issues.extend(validate_directories([root / "titan_ui", root / "data", root / "docs"]))

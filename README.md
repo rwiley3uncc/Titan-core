@@ -46,6 +46,27 @@ python run_battlebuddy_migration_tests.py
 python run_environment_validation.py
 ```
 
+First-scope container build:
+
+```powershell
+# run from the Titan workspace root
+docker buildx build --load --build-context titan_shared=.\Titan-shared --build-context titan_ai=.\Titan-AI -f .\Titan-core\Dockerfile .\Titan-core
+```
+
+First-scope startup gate:
+
+```powershell
+python run_environment_validation.py --startup-gate
+```
+
+First-scope Docker scope notes:
+
+- the image is limited to BattleBuddy only
+- `Titan-shared` and `Titan-AI` are installed as package dependencies
+- local runtime data, approval/event JSONL, launcher logs, `.local_artifacts`, and `titan.db` are not baked into the image
+- no Compose file is included in this batch
+- no Titan Command or Titan Forge containerization is included in this batch
+
 BattleBuddy chat architecture:
 
 - `titan_core/api/chat.py` is the active FastAPI route and top-level orchestration layer for chat.

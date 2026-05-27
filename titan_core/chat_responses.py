@@ -64,6 +64,8 @@ def _source_metadata(
         label = "Source: Uploaded Verified File"
     elif source_type == "sitrep":
         label = "Source: Sitrep / Dashboard"
+    elif source_type == "local_course_material":
+        label = "Source: Local Course Material"
     elif source_type == "local_verified_source":
         label = "Source: Local Verified Source"
 

@@ -45,6 +45,7 @@ from titan_core.chat_mode import (
     detect_personal_intent,
     is_development_assistant_mode,
     is_personal_assistant_mode,
+    is_student_assistant_mode,
     safe_mode,
     should_use_personal_memory,
 )
@@ -62,6 +63,7 @@ from titan_core.chat_responses import (
 )
 from titan_core.chat_tasks import task_command_response
 from titan_core.config import get_search_provider, is_verified_web_enabled, settings
+from titan_core.course_retrieval import retrieve_course_context
 from titan_core.db import get_db
 from titan_core.event_log import emit_battlebuddy_event
 from titan_core.models import MemoryItem, User
@@ -297,6 +299,40 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     }
 
     if is_personal_assistant_mode(mode) and route_used == "verified_knowledge":
+        if is_student_assistant_mode(mode) and not file_content:
+            course_retrieval = retrieve_course_context(clean_text)
+            if course_retrieval is not None:
+                verified_context["course_retrieval"] = course_retrieval
+                emit_battlebuddy_event(
+                    subsystem="battlebuddy",
+                    severity="INFO",
+                    event_type="student_course_retrieval_completed",
+                    summary="Local course retrieval completed for student mode.",
+                    details=(
+                        f"Hits: {len(course_retrieval.hits)} | "
+                        f"Courses: {course_retrieval.course_count} | "
+                        f"Source files: {course_retrieval.source_file_count} | "
+                        f"Chunks: {course_retrieval.indexed_chunk_count} | "
+                        f"Unsupported files: {len(course_retrieval.unsupported_files)} | "
+                        f"Confidence: {course_retrieval.confidence} | "
+                        f"Latest source mtime: {course_retrieval.latest_source_mtime or 'unknown'}"
+                    ),
+                    confidence=0.9 if course_retrieval.confidence == "high" else 0.7,
+                    risk="low",
+                    status="completed",
+                )
+            else:
+                emit_battlebuddy_event(
+                    subsystem="battlebuddy",
+                    severity="NOTICE",
+                    event_type="student_course_retrieval_missing",
+                    summary="Local course retrieval did not find grounded support.",
+                    details="No approved local course material matched the current student query.",
+                    confidence=0.8,
+                    risk="low",
+                    status="completed",
+                )
+
         details = get_verified_source_details(clean_text, verified_context)
         attempted_lookup = False
         verified_web = None
@@ -379,23 +415,50 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         elif "uploaded_file" in details.source_types:
             source_type = "uploaded_file"
             source_status = "verified_source"
+        elif "course_material_retrieval" in details.source_types:
+            source_type = "local_course_material"
+            source_status = "verified_source"
         elif "local_verified_doc" in details.source_types or "approved_registry_entry" in details.source_types:
             source_type = "local_verified_source"
             source_status = "verified_source"
+
+        reply_text = out.reply
+        if source_type == "local_course_material":
+            retrieval = verified_context.get("course_retrieval")
+            if retrieval is not None:
+                source_names = getattr(retrieval, "names", []) or []
+                confidence_label = str(getattr(retrieval, "confidence", details.confidence) or details.confidence)
+                if confidence_label == "low":
+                    reply_text = (
+                        "Local course retrieval found only weak support. Treat this as a partial grounded answer.\n\n"
+                        f"{reply_text}"
+                    )
+                if source_names:
+                    source_block = "\n".join(f"- {name}" for name in source_names[:3])
+                    reply_text = f"{reply_text}\n\nLocal course sources used:\n{source_block}"
 
         source_meta = _source_metadata(
             source_type=source_type,
             source_status=source_status,
             source_names=details.names,
             source_urls=source_urls,
-            source_items=source_items,
+            source_items=(
+                getattr(verified_context.get("course_retrieval"), "source_items", [])
+                if source_type == "local_course_material"
+                else source_items
+            ),
+        )
+        response_source_items = (
+            getattr(verified_context.get("course_retrieval"), "source_items", [])
+            if source_type == "local_course_material"
+            else source_items
         )
         return _finalize_with_metadata(
             clean_text,
             ChatResponse(
                 reply=_format_verified_web_reply(verified_context.get("verified_web"), out.reply)
                 if "verified_web_result" in details.source_types and verified_context.get("verified_web") is not None
-                else out.reply,
+                else reply_text,
                 proposed_actions=out.proposed_actions,
             ),
             _emit_chat_response_event,
@@ -405,7 +468,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             source_label=source_meta["source_label"],
             source_names=source_meta["source_names"],
             source_urls=source_meta["source_urls"],
-            source_items=source_items,
+            source_items=response_source_items,
             confidence=details.confidence,
         )
     if isinstance(planned_agent_result, AgentAction) and validate_agent_action(planned_agent_result):

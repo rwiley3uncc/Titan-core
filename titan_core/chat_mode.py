@@ -6,6 +6,7 @@ from typing import Iterable
 
 QUESTION_STARTERS = ("what ", "where ", "when ", "why ", "how ", "who ", "which ", "do ", "does ", "did ", "is ", "are ", "can ", "could ", "would ", "should ")
 PERSONAL_ASSISTANT_MODES = {"personal_general", "personal_productivity", "personal_builder", "personal_family"}
+STUDENT_ASSISTANT_MODES = {"student_ops", "student_coach", "student_general"}
 TODAY_TOKENS = {"today", "toda", "tody", "todays"}
 SCHEDULE_TOKENS = {"schedule", "calendar", "agenda"}
 PRIORITY_TOKENS = {"priority", "priorities", "important", "focus", "attention"}
@@ -28,11 +29,25 @@ def is_question(text: str) -> bool:
 
 
 def safe_mode(req_mode: str | None) -> str:
-    return req_mode if req_mode in {"personal_general", "personal_productivity", "personal_builder", "personal_family", "development_assistant"} else "personal_general"
+    return req_mode if req_mode in {
+        "personal_general",
+        "personal_productivity",
+        "personal_builder",
+        "personal_family",
+        "development_assistant",
+        "student_ops",
+        "student_coach",
+        "student_general",
+        "teacher_ta",
+    } else "personal_general"
 
 
 def is_personal_assistant_mode(mode: str) -> bool:
-    return mode in PERSONAL_ASSISTANT_MODES
+    return mode in PERSONAL_ASSISTANT_MODES or mode in STUDENT_ASSISTANT_MODES
+
+
+def is_student_assistant_mode(mode: str) -> bool:
+    return mode in STUDENT_ASSISTANT_MODES
 
 
 def is_development_assistant_mode(mode: str) -> bool:
@@ -76,6 +91,26 @@ def classify_route(text: str, mode: str, personal_intent: str | None = None) -> 
     )
     if any(hint in normalized for hint in knowledge_hints):
         return "verified_knowledge"
+
+    if is_student_assistant_mode(mode):
+        student_knowledge_hints = (
+            "quiz me",
+            "practice question",
+            "practice quiz",
+            "study guide",
+            "class notes",
+            "my notes",
+            "course notes",
+            "chapter ",
+            "from my notes",
+            "from my material",
+            "from my uploaded material",
+            "uploaded material",
+            "syllabus",
+            "subnetting",
+        )
+        if any(hint in normalized for hint in student_knowledge_hints):
+            return "verified_knowledge"
 
     personal_hints = (
         "schedule",

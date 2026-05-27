@@ -210,6 +210,100 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertEqual(response.source_names, ["calculus_notes.md"])
         self.assertIn("Based on `calculus_notes.md`", response.reply)
 
+    def test_student_ops_uses_local_course_retrieval_sources(self) -> None:
+        retrieval = SimpleNamespace(
+            names=["Example Student Ops Course: example_note.md"],
+            context_text=(
+                "Local course retrieval context is active.\n"
+                "[Source 1] course_id=example-student-ops | course_name=Example Student Ops Course | "
+                "file=example_note.md | score=9.50 | modified_at=2026-05-14T12:00:00+00:00\n"
+                "Subnetting splits a network into smaller address ranges."
+            ),
+            source_status="verified_source",
+            confidence="high",
+            hits=[SimpleNamespace(score=9.5)],
+            source_items=[
+                {
+                    "course_id": "example-student-ops",
+                    "course_name": "Example Student Ops Course",
+                    "source_name": "example_note.md",
+                    "score": 9.5,
+                    "excerpt": "Subnetting splits a network into smaller address ranges.",
+                }
+            ],
+            course_count=1,
+            source_file_count=3,
+            indexed_chunk_count=3,
+            unsupported_files=[],
+            latest_source_mtime="2026-05-14T12:00:00+00:00",
+        )
+
+        def fake_run_brain(inp, db=None, user_id=None):
+            source_message = "\n".join(message.content for message in inp.messages)
+            self.assertIn("Local course retrieval context is active.", source_message)
+            self.assertIn("example_note.md", source_message)
+            self.assertIn("Subnetting", source_message)
+            return BrainOutput(
+                reply="Your notes describe subnetting as splitting a network into smaller address ranges.",
+                proposed_actions=[],
+            )
+
+        with (
+            patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
+            patch.object(chat_api, "plan_agent_or_plan", return_value=None),
+            patch.object(chat_api, "find_memory_match", return_value=None),
+            patch.object(chat_api, "retrieve_course_context", return_value=retrieval),
+            patch.object(chat_api, "run_brain", side_effect=fake_run_brain),
+            patch("titan_core.api.chat.is_verified_web_enabled", return_value=False),
+        ):
+            response = chat_api.chat(
+                ChatRequest(
+                    message="What do my networking notes say about subnetting?",
+                    mode="student_ops",
+                    web_enabled=False,
+                ),
+                db=self.db,
+            )
+
+        self.assertEqual(response.route_used, "verified_knowledge")
+        self.assertEqual(response.source_type, "local_course_material")
+        self.assertEqual(response.source_status, "verified_source")
+        self.assertEqual(response.source_label, "Source: Local Course Material")
+        self.assertIn("Example Student Ops Course: example_note.md", response.source_names)
+        self.assertIn("Local course sources used:", response.reply)
+
+    def test_student_ops_missing_local_course_retrieval_fails_closed(self) -> None:
+        with (
+            patch.object(chat_api, "get_default_mvp_user", return_value=FAKE_USER),
+            patch.object(chat_api, "plan_agent_or_plan", return_value=None),
+            patch.object(chat_api, "find_memory_match", return_value=None),
+            patch.object(chat_api, "find_duplicate_memory", return_value=None),
+            patch.object(chat_api, "should_auto_remember", return_value=False),
+            patch.object(chat_api, "memory_importance_score", return_value=0),
+            patch.object(chat_api, "retrieve_course_context", return_value=None),
+            patch("titan_core.api.chat.is_verified_web_enabled", return_value=False),
+        ):
+            response = chat_api.chat(
+                ChatRequest(
+                    message="Explain chapter 3 from my class notes.",
+                    mode="student_ops",
+                    web_enabled=False,
+                ),
+                db=self.db,
+            )
+
+        self.assertEqual(response.route_used, "verified_knowledge")
+        self.assertEqual(response.source_status, "missing_verified_source")
+        self.assertEqual(
+            response.reply,
+            "I don't have a verified source for that topic yet.\n\n"
+            "You can:\n"
+            "- upload your course notes or textbook\n"
+            "- add an approved source\n"
+            "- enable verified web lookup\n\n"
+            "Then I can help using trusted information.",
+        )
+
     def test_trusted_url_filter_accepts_approved_domains(self) -> None:
         self.assertTrue(is_trusted_url("https://khanacademy.org/math"))
         self.assertTrue(is_trusted_url("https://www.khanacademy.org/math"))

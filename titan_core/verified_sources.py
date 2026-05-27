@@ -10,6 +10,7 @@ APPROVED_SOURCE_TYPES = {
     "calendar_source_data",
     "uploaded_file",
     "local_verified_doc",
+    "course_material_retrieval",
     "approved_registry_entry",
     "verified_web_result",
 }
@@ -98,6 +99,7 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
     context_texts: list[str] = []
     source_types: list[str] = []
     status = "missing_verified_source"
+    retrieval_confidence_hint = ""
 
     personal_intent = context.get("personal_intent")
     sitrep_payload = context.get("sitrep_payload")
@@ -138,6 +140,22 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
             f"{doc_content}"
         )
         status = "verified"
+
+    course_retrieval = context.get("course_retrieval")
+    if course_retrieval is not None:
+        retrieval_names = getattr(course_retrieval, "names", []) or []
+        retrieval_context = str(getattr(course_retrieval, "context_text", "") or "").strip()
+        retrieval_status = str(getattr(course_retrieval, "source_status", "") or "verified_source").strip()
+        retrieval_confidence = str(getattr(course_retrieval, "confidence", "") or "").strip()
+        if retrieval_names and retrieval_context:
+            for name in retrieval_names:
+                if name not in names:
+                    names.append(name)
+            source_types.append("course_material_retrieval")
+            context_texts.append(retrieval_context)
+            status = retrieval_status or "verified_source"
+            if retrieval_confidence in SOURCE_CONFIDENCE_LABELS:
+                retrieval_confidence_hint = retrieval_confidence
 
     for entry in context.get("approved_registry_entries", []) or []:
         if not isinstance(entry, dict):
@@ -186,6 +204,8 @@ def get_verified_source_details(message: str, context: dict[str, Any]) -> Verifi
     confidence = "low"
     if "uploaded_file" in source_types or "sitrep_payload" in source_types:
         confidence = "high"
+    elif "course_material_retrieval" in source_types and retrieval_confidence_hint:
+        confidence = retrieval_confidence_hint
     elif "verified_web_result" in source_types:
         confidence = "medium"
     elif source_types:

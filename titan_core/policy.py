@@ -46,6 +46,7 @@ _ALLOWED_TOOLS_BY_MODE = {
     "personal_builder": {"create_task", "save_memory", "draft_email"},
     "personal_family": {"create_task", "save_memory", "draft_email"},
     "development_assistant": {"create_task", "save_memory", "draft_email"},
+    "student_ops": {"create_task", "save_memory", "draft_email"},
     "student_coach": {"create_task", "save_memory", "draft_email"},
     "student_general": {"create_task", "save_memory", "draft_email"},
     "teacher_ta": {"create_task", "save_memory", "draft_email"},
@@ -190,28 +191,28 @@ def _infer_mode(inp: BrainInput) -> str:
 
 def _study_coach_reply(user_text: str) -> str:
     return (
-        "I can’t give a direct final answer, but I *can* help you learn it and get it right.\n\n"
+        "I can't give a direct final answer, but I *can* help you learn it and get it right.\n\n"
         "To help you fast, pick one:\n"
         "1) **Hint** (small nudge)\n"
         "2) **Step-by-step plan** (you do each step; I check)\n"
         "3) **Check my work** (paste your attempt)\n\n"
         "Now send:\n"
         "- The exact problem statement (paste it)\n"
-        "- What you tried so far (even if it’s messy)\n"
+        "- What you tried so far (even if it's messy)\n"
         "- Where you got stuck"
     )
 
 
 def _exam_safe_reply() -> str:
     return (
-        "I can’t help with answers to an active quiz/test/exam. But I *can* help you learn the concept.\n\n"
+        "I can't help with answers to an active quiz/test/exam. But I *can* help you learn the concept.\n\n"
         "Here are safe options:\n"
-        "- **Concept review**: tell me the topic (chapter/section) and what’s confusing.\n"
-        "- **Study plan**: how much time do you have before it’s due?\n"
+        "- **Concept review**: tell me the topic (chapter/section) and what's confusing.\n"
+        "- **Study plan**: how much time do you have before it's due?\n"
         "- **Similar practice**: I can generate a *similar but not the same* practice problem and walk you through it.\n\n"
         "Send:\n"
         "- The topic (not the exact graded question), and\n"
-        "- What you already know vs what’s unclear."
+        "- What you already know vs what's unclear."
     )
 
 
@@ -251,7 +252,7 @@ def apply_policy(inp: BrainInput, out: BrainOutput) -> BrainOutput:
     out.proposed_actions = [a for a in out.proposed_actions if a.type in allowed]
 
     # 2) Student coaching behavior
-    if mode == "student_coach":
+    if mode in {"student_coach", "student_ops"}:
         user_text = _latest_user_text(inp)
 
         # (A) University info / general knowledge is allowed

@@ -1,0 +1,15 @@
+{
+  "course_id": "example-student-ops",
+  "course_name": "Example Student Ops Course",
+  "term": "2026 Spring",
+  "instructor": "Optional Instructor",
+  "source_files": [
+    "notes/example_note.md",
+    "notes/networking_study_guide.txt",
+    "notes/concepts.json"
+  ],
+  "assignment_links": [],
+  "notes": "Example local-first course manifest for Monday setup. Replace with your real class information.",
+  "created_at": "2026-05-14T12:00:00+00:00",
+  "updated_at": "2026-05-14T12:00:00+00:00"
+}

@@ -1,0 +1,11 @@
+Networking Study Guide
+
+OSI review:
+- Layer 1 is the physical layer.
+- Layer 2 handles local framing and switching.
+- Layer 3 handles logical addressing and routing.
+
+Subnetting reminder:
+- A /26 network leaves 6 host bits.
+- 2^6 gives 64 total addresses per subnet.
+- Usable host addresses are typically total addresses minus network and broadcast.

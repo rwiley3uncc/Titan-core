@@ -1,0 +1,13 @@
+{
+  "course_topic": "intro_networking",
+  "concepts": [
+    {
+      "name": "subnetting",
+      "summary": "Subnetting divides a larger network into smaller ranges so addressing and broadcast behavior are easier to manage."
+    },
+    {
+      "name": "cidr",
+      "summary": "CIDR prefixes describe how many leading bits belong to the network portion of an address."
+    }
+  ]
+}

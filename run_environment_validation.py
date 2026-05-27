@@ -47,6 +47,11 @@ def _run_startup_gate(root: Path, *, host: str, port: int, timeout_seconds: floa
     process: subprocess.Popen[str] | None = None
     health_url = f"http://{host}:{port}/health"
 
+    import_issues = validate_imports(["fastapi", "uvicorn", "titan_battlebuddy", "titan_shared", "titan_ai"])
+    if import_issues:
+        issues.extend(f"ENVIRONMENT_ISSUE: {issue}" for issue in import_issues)
+        return print_validation_report(title, issues, details)
+
     if _http_ok(health_url):
         issues.append(f"ENVIRONMENT_ISSUE: Startup gate requires {health_url} to be free before validation.")
         return print_validation_report(title, issues, details)

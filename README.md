@@ -44,7 +44,22 @@ Validation:
 ```powershell
 python run_battlebuddy_migration_tests.py
 python run_environment_validation.py
+python run_student_mode_validation.py
 ```
+
+Launcher/preflight notes:
+
+- `Titan-Command\scripts\launch_battlebuddy_runtime.ps1` now records the resolved Python path and any optional WSL helper status in launcher metadata.
+- The BattleBuddy backend can still start even if the optional WSL `searx.webapp` helper is unavailable or explicitly disabled.
+- The current local launcher still has optional WSL coupling for the helper path; that remains a portability gap rather than a hidden requirement.
+
+Student mode notes:
+
+- A minimum local-first `student_ops` mode is now documented for Monday-use planning.
+- BattleBuddy already exposes sitrep, class/deadline visibility, study-block suggestions, and verified-source fail-closed behavior that this mode builds on.
+- Course-material organization is read-only and manifest-based under `data/courses/`.
+- A first-scope local retrieval MVP now supports manifest-listed `.md`, `.txt`, and `.json` course files for `student_ops`.
+- Current retrieval remains local-only, read-only, and fail-closed.
 
 First-scope container build:
 
@@ -64,6 +79,7 @@ First-scope Docker scope notes:
 - the image is limited to BattleBuddy only
 - `Titan-shared` and `Titan-AI` are installed as package dependencies
 - local runtime data, approval/event JSONL, launcher logs, `.local_artifacts`, and `titan.db` are not baked into the image
+- the Dockerfile now includes a lightweight healthcheck against `/health`
 - no Compose file is included in this batch
 - no Titan Command or Titan Forge containerization is included in this batch
 
@@ -88,3 +104,6 @@ Documentation:
 - [BattleBuddy](../Titan-AI/docs/BATTLEBUDDY.md)
 - [Architecture](../Titan-shared/docs/TITAN_TECHNICAL_ARCHITECTURE.md)
 - [API Reference](../Titan-AI/docs/API_REFERENCE.md)
+- [Runtime Contract](../Titan-shared/docs/runtime_contracts/BATTLEBUDDY_RUNTIME_CONTRACT.md)
+- [Student Mode](../Titan-shared/docs/TITAN_STUDENT_MODE.md)
+- [Local Course Retrieval MVP](../Titan-shared/docs/TITAN_LOCAL_COURSE_RETRIEVAL_MVP.md)

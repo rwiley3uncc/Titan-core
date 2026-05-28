@@ -279,6 +279,16 @@ body {
   color: #dbd4ff;
 }
 
+.active-mode[data-mode="student_ops"],
+.mode-row[data-mode="student_ops"] {
+  border-color: rgba(255, 192, 92, 0.24);
+}
+
+.active-mode[data-mode="student_ops"] {
+  background: rgba(255, 192, 92, 0.12);
+  color: #fff0c7;
+}
+
 .mode-row label {
   font-size: 13px;
   color: var(--muted);
@@ -418,6 +428,11 @@ button:focus-visible {
 .conversation-panel[data-mode="development_assistant"] {
   border-color: rgba(123, 92, 255, 0.2);
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(123, 92, 255, 0.04);
+}
+
+.conversation-panel[data-mode="student_ops"] {
+  border-color: rgba(255, 192, 92, 0.2);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 192, 92, 0.04);
 }
 
 .panel h2,
@@ -1666,9 +1681,10 @@ textarea:focus {
             <label for="assistantMode"><strong>Assistant Mode</strong></label>
             <select id="assistantMode">
               <option value="personal_general">Personal Assistant</option>
+              <option value="student_ops">Student Operations</option>
               <option value="development_assistant">Development Assistant</option>
             </select>
-            <div id="modeHint" class="mode-hint">Personal Assistant: planning, reminders, drafting, sitreps.<br>Development Assistant: code help, debugging, file guidance, safe changes.</div>
+            <div id="modeHint" class="mode-hint">Personal Assistant: planning, reminders, drafting, sitreps.<br>Student Operations: class sitreps, study planning, grounded course help.<br>Development Assistant: code help, debugging, file guidance, safe changes.</div>
           </div>
           <textarea id="msg" rows="3" placeholder="Type a message or use Voice Input..."></textarea>
           <div id="devUploadSection" class="dev-upload">
@@ -1845,15 +1861,17 @@ textarea:focus {
     };
 
     function modeStatusPrefix() {
-      return currentMode() === 'development_assistant'
-        ? 'Development Assistant'
-        : 'Personal Assistant';
+      const mode = currentMode();
+      if (mode === 'development_assistant') return 'Development Assistant';
+      if (mode === 'student_ops') return 'Student Operations';
+      return 'Personal Assistant';
     }
 
     function defaultHeaderStatus() {
-      return currentMode() === 'development_assistant'
-        ? 'Development Assistant | Ready'
-        : 'Personal Assistant | Online';
+      const mode = currentMode();
+      if (mode === 'development_assistant') return 'Development Assistant | Ready';
+      if (mode === 'student_ops') return 'Student Operations | Local-first';
+      return 'Personal Assistant | Online';
     }
 
     function normalizeAssistantUiState(state) {
@@ -2057,11 +2075,14 @@ textarea:focus {
 
       const mode = currentMode();
       const isDevMode = mode === 'development_assistant';
+      const isStudentMode = mode === 'student_ops';
 
       if (label) {
         label.textContent = isDevMode
           ? 'Active Mode: Development Assistant'
-          : 'Active Mode: Personal Assistant';
+          : isStudentMode
+            ? 'Active Mode: Student Operations'
+            : 'Active Mode: Personal Assistant';
         label.dataset.mode = mode;
       }
 
@@ -2075,7 +2096,9 @@ textarea:focus {
 
       hint.innerHTML = isDevMode
         ? 'Development Assistant active. Focused on code help, debugging, file guidance, and safe changes.'
-        : 'Personal Assistant active. Focused on planning, reminders, drafting, and daily sitreps.';
+        : isStudentMode
+          ? 'Student Operations active. Focused on class sitreps, deadlines, study planning, grounded course-material help, and no-cheating coaching.'
+          : 'Personal Assistant active. Focused on planning, reminders, drafting, and daily sitreps.';
 
       if (devUploadSection) {
         devUploadSection.classList.toggle('visible', isDevMode);
@@ -3634,7 +3657,7 @@ textarea:focus {
         const mode = currentMode();
         const webEnabled = currentWebEnabled();
         console.debug('[verified_web] sending chat request', { web_enabled: webEnabled, mode });
-        updateHeaderStatus(mode === 'development_assistant' ? 'reviewing' : 'thinking');
+        updateHeaderStatus(mode === 'development_assistant' ? 'reviewing' : mode === 'student_ops' ? 'thinking' : 'thinking');
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -822,9 +822,28 @@ textarea:focus {
   display: block;
 }
 
+.student-documents {
+  display: none;
+  margin-top: 10px;
+  padding: 9px;
+  border: 1px solid rgba(255, 192, 92, 0.22);
+  border-radius: 12px;
+  background: rgba(37, 28, 8, 0.34);
+}
+
+.student-documents.visible {
+  display: block;
+}
+
 .dev-upload-title {
   font-weight: 700;
   margin-bottom: 8px;
+}
+
+.student-documents-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #fff0c7;
 }
 
 .dev-upload-row {
@@ -834,11 +853,59 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.student-documents-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .dev-upload-meta {
   font-size: 12px;
   color: var(--muted);
   margin-top: 8px;
   line-height: 1.4;
+}
+
+.student-documents-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+.student-documents-field label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.student-documents-field input,
+.student-documents-field select {
+  min-width: 150px;
+}
+
+.student-documents-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+.student-documents-meta.is-error {
+  color: #ffd0d0;
+}
+
+.student-documents-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.student-documents-card {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(10, 26, 42, 0.68);
+  border: 1px solid rgba(255, 192, 92, 0.18);
 }
 
 .voice-settings {
@@ -1699,6 +1766,39 @@ textarea:focus {
             </div>
             <div id="devFileName" class="dev-upload-meta">No file selected.</div>
           </div>
+          <div id="studentDocumentSection" class="student-documents">
+            <div class="student-documents-title">Student Course Documents</div>
+            <div class="student-documents-row">
+              <div class="student-documents-field">
+                <label for="studentDocFileInput">Add Class File</label>
+                <input id="studentDocFileInput" type="file" accept=".pdf,.txt,.md,.docx" />
+              </div>
+              <div class="student-documents-field">
+                <label for="studentDocCourseTag">Course Tag</label>
+                <input id="studentDocCourseTag" type="text" placeholder="NET-301" />
+              </div>
+              <div class="student-documents-field">
+                <label for="studentDocCategory">Category</label>
+                <select id="studentDocCategory">
+                  <option value="syllabus">Syllabus</option>
+                  <option value="lecture_notes">Lecture Notes</option>
+                  <option value="assignment">Assignment</option>
+                  <option value="project">Project</option>
+                  <option value="reading">Reading</option>
+                  <option value="reference">Reference</option>
+                  <option value="other" selected>Other</option>
+                </select>
+              </div>
+              <button id="uploadStudentDocBtn" type="button">Upload Class File</button>
+              <button id="clearStudentDocBtn" type="button">Clear File</button>
+            </div>
+            <div id="studentDocStatus" class="student-documents-meta">
+              Student mode uses local-only uploaded class files. Chat questions stay grounded to retrieved course evidence.
+            </div>
+            <div id="studentDocRecentList" class="student-documents-list">
+              <div class="empty">No class files uploaded yet.</div>
+            </div>
+          </div>
           <div class="button-row" style="margin-top:10px;">
             <button id="sendBtn" type="button">Send</button>
             <button id="newChatBtn" type="button">New Chat</button>
@@ -1825,6 +1925,8 @@ textarea:focus {
     let currentPlanSuggestion = null;
     let planActionRequestInFlight = false;
     let selectedDevFile = null;
+    let selectedStudentDocumentFile = null;
+    let currentStudentDocuments = [];
     const ASSISTANT_MODE_STORAGE_KEY = 'titan_assistant_mode';
     const WEB_ENABLED_STORAGE_KEY = 'titan_web_enabled';
     const VOICE_NAME_STORAGE_KEY = 'titan_voice_name';
@@ -1834,6 +1936,7 @@ textarea:focus {
     const INITIAL_TITAN_GREETING = 'Online. How can I help?';
     const MAX_DEV_FILE_CHARS = 120000;
     const ALLOWED_DEV_FILE_EXTENSIONS = ['.py', '.js', '.ts', '.html', '.css', '.json', '.md', '.txt', '.gd', '.tscn', '.yml', '.yaml'];
+    const ALLOWED_STUDENT_DOCUMENT_EXTENSIONS = ['.pdf', '.txt', '.md'];
     const DEFAULT_VOICE_RATE = 0.95;
     const DEFAULT_VOICE_PITCH = 1.0;
     const DEFAULT_VOICE_VOLUME = 1.0;
@@ -2071,6 +2174,7 @@ textarea:focus {
       const modeRow = document.querySelector('.mode-row');
       const conversationPanel = document.querySelector('.conversation-panel');
       const devUploadSection = document.getElementById('devUploadSection');
+      const studentDocumentSection = document.getElementById('studentDocumentSection');
       if (!hint) return;
 
       const mode = currentMode();
@@ -2103,6 +2207,12 @@ textarea:focus {
       if (devUploadSection) {
         devUploadSection.classList.toggle('visible', isDevMode);
       }
+      if (studentDocumentSection) {
+        studentDocumentSection.classList.toggle('visible', isStudentMode);
+      }
+      if (isStudentMode) {
+        loadStudentDocuments();
+      }
 
       updateHeaderStatus();
     }
@@ -2127,6 +2237,136 @@ textarea:focus {
         input.value = '';
       }
       updateDevFileName();
+    }
+
+    function setStudentDocumentStatus(message, isError = false) {
+      const target = document.getElementById('studentDocStatus');
+      if (!target) return;
+      target.textContent = String(message || '').trim() || 'Student course documents are local-only and read-only after upload.';
+      target.classList.toggle('is-error', !!isError);
+    }
+
+    function updateStudentDocumentFileName() {
+      if (!selectedStudentDocumentFile) {
+        setStudentDocumentStatus('Student mode uses local-only uploaded class files. Chat questions stay grounded to retrieved course evidence.');
+        return;
+      }
+      setStudentDocumentStatus(`Selected class file: ${selectedStudentDocumentFile.name}`);
+    }
+
+    function clearStudentDocumentFile() {
+      selectedStudentDocumentFile = null;
+      const input = document.getElementById('studentDocFileInput');
+      if (input) {
+        input.value = '';
+      }
+      updateStudentDocumentFileName();
+    }
+
+    function renderStudentDocuments() {
+      const list = document.getElementById('studentDocRecentList');
+      if (!list) return;
+
+      if (!Array.isArray(currentStudentDocuments) || currentStudentDocuments.length === 0) {
+        list.innerHTML = '<div class="empty">No class files uploaded yet.</div>';
+        return;
+      }
+
+      list.innerHTML = currentStudentDocuments.map(item => `
+        <div class="student-documents-card">
+          <div class="item-title">${escapeHtml(item.filename || 'Untitled file')}</div>
+          <div class="item-meta">
+            Course: ${escapeHtml(item.course_tag || 'Unknown')}<br>
+            Category: ${escapeHtml(item.document_category || 'other')}<br>
+            Chunks: ${escapeHtml(item.chunk_count ?? 0)}<br>
+            Ingested: ${escapeHtml(formatDateTime(item.ingestion_timestamp))}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function loadStudentDocuments() {
+      try {
+        const response = await fetch('/api/student-documents?limit=8');
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          setStudentDocumentStatus(detail || 'Failed to load recent class files.', true);
+          return;
+        }
+        const payload = await response.json();
+        currentStudentDocuments = Array.isArray(payload.documents) ? payload.documents : [];
+        renderStudentDocuments();
+      } catch (error) {
+        console.error(error);
+        setStudentDocumentStatus('Failed to load recent class files.', true);
+      }
+    }
+
+    async function handleStudentDocumentSelection(event) {
+      const input = event && event.target;
+      const file = input && input.files && input.files[0] ? input.files[0] : null;
+      if (!file) {
+        clearStudentDocumentFile();
+        return;
+      }
+
+      const lowerName = file.name.toLowerCase();
+      if (lowerName.endsWith('.docx')) {
+        clearStudentDocumentFile();
+        setStudentDocumentStatus('DOCX is not supported yet. Use PDF, TXT, or MD.', true);
+        return;
+      }
+      const allowed = ALLOWED_STUDENT_DOCUMENT_EXTENSIONS.some(ext => lowerName.endsWith(ext));
+      if (!allowed) {
+        clearStudentDocumentFile();
+        setStudentDocumentStatus('That file type is not supported. Use PDF, TXT, or MD.', true);
+        return;
+      }
+
+      selectedStudentDocumentFile = file;
+      updateStudentDocumentFileName();
+    }
+
+    async function uploadStudentDocument() {
+      if (!selectedStudentDocumentFile) {
+        setStudentDocumentStatus('Choose a local class file before uploading.', true);
+        return;
+      }
+
+      const courseTagInput = document.getElementById('studentDocCourseTag');
+      const categoryInput = document.getElementById('studentDocCategory');
+      const courseTag = courseTagInput ? courseTagInput.value.trim() : '';
+      const documentCategory = categoryInput ? categoryInput.value : 'other';
+      if (!courseTag) {
+        setStudentDocumentStatus('Course tag is required for class file upload.', true);
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', selectedStudentDocumentFile);
+      formData.append('course_tag', courseTag);
+      formData.append('document_category', documentCategory);
+
+      try {
+        setStudentDocumentStatus(`Uploading ${selectedStudentDocumentFile.name}...`);
+        const response = await fetch('/api/student-documents/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!response.ok) {
+          const detail = await responseDetail(response);
+          setStudentDocumentStatus(detail || 'Failed to upload that class file.', true);
+          return;
+        }
+        const payload = await response.json();
+        const record = payload.record || {};
+        setStudentDocumentStatus(`Uploaded ${record.filename || selectedStudentDocumentFile.name} for ${record.course_tag || courseTag}.`);
+        clearStudentDocumentFile();
+        await loadStudentDocuments();
+      } catch (error) {
+        console.error(error);
+        setStudentDocumentStatus('Failed to upload that class file.', true);
+      }
     }
 
     function parseStoredNumber(key, fallback, min, max) {
@@ -3822,6 +4062,9 @@ textarea:focus {
     document.getElementById('closeSettingsBtn').addEventListener('click', closeSettingsModal);
     document.getElementById('devFileInput').addEventListener('change', handleDevFileSelection);
     document.getElementById('clearDevFileBtn').addEventListener('click', clearDevFile);
+    document.getElementById('studentDocFileInput').addEventListener('change', handleStudentDocumentSelection);
+    document.getElementById('uploadStudentDocBtn').addEventListener('click', uploadStudentDocument);
+    document.getElementById('clearStudentDocBtn').addEventListener('click', clearStudentDocumentFile);
     document.getElementById('assistantMode').addEventListener('change', () => {
       saveModeSelection();
       updateModeHint();
@@ -3882,6 +4125,8 @@ textarea:focus {
       restoreWebEnabledSetting();
       restoreVoiceSettings();
       updateModeHint();
+      updateStudentDocumentFileName();
+      await loadStudentDocuments();
       await loadSitrep();
 
       if ('Notification' in window && Notification.permission === 'default') {

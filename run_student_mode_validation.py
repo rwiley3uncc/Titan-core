@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
+
+from fastapi.testclient import TestClient
 
 from titan_core.titan_ai_imports import enable_titan_ai_imports
 from titan_core.titan_shared_imports import ensure_titan_shared_on_path
@@ -9,18 +13,20 @@ from titan_core.titan_shared_imports import ensure_titan_shared_on_path
 enable_titan_ai_imports()
 ensure_titan_shared_on_path()
 
-from titan_ai.prompts import build_system_prompt
 from titan_ai.ai_types import AIMessage, AIRequest
+from titan_ai.prompts import build_system_prompt
 from titan_core.chat_mode import is_personal_assistant_mode, safe_mode
 from titan_core.course_manifest import list_course_manifests, validate_course_manifest_record
 from titan_core.policy import apply_policy
 from titan_core.schemas import BrainInput, BrainOutput, ChatMessage, ProposedAction
+from titan_battlebuddy.main import app
 from titan_shared.runtime_validation import print_validation_report, python_runtime_summary
 
 
 ROOT = Path(__file__).resolve().parent
 STUDENT_MODE_CONFIG_PATH = ROOT / "configs" / "student_mode_config.json"
 COURSES_ROOT = ROOT / "data" / "courses"
+EXPECTED_EXTENSIONS = [".pdf", ".md", ".txt"]
 
 
 def _validate_student_mode_config() -> list[str]:
@@ -76,8 +82,10 @@ def _validate_student_mode_config() -> list[str]:
         if retrieval_policy.get("persistent_background_indexing") is not False:
             issues.append("student mode config must set retrieval_policy.persistent_background_indexing=false.")
         supported_extensions = retrieval_policy.get("supported_extensions")
-        if supported_extensions != [".md", ".txt", ".json"]:
-            issues.append("student mode config must declare supported_extensions ['.md', '.txt', '.json'].")
+        if supported_extensions != EXPECTED_EXTENSIONS:
+            issues.append(
+                "student mode config must declare supported_extensions ['.pdf', '.md', '.txt']."
+            )
 
     return issues
 
@@ -144,17 +152,197 @@ def _validate_course_manifests() -> list[str]:
     return issues
 
 
+def _validation_detail(response) -> str:
+    try:
+        payload = response.json()
+    except Exception:
+        return response.text
+    if isinstance(payload, dict):
+        detail = payload.get("detail")
+        if isinstance(detail, dict):
+            return str(detail.get("message") or detail.get("status") or payload)
+        if detail is not None:
+            return str(detail)
+    return str(payload)
+
+
+def _validate_battlebuddy_student_documents() -> list[str]:
+    issues: list[str] = []
+    temp_root = Path(tempfile.mkdtemp(prefix="titan-student-mode-validation-"))
+    docs_root = temp_root / "course_documents"
+    previous_docs_root = os.environ.get("TITAN_COURSE_DOCUMENTS_DIR")
+    os.environ["TITAN_COURSE_DOCUMENTS_DIR"] = str(docs_root)
+
+    try:
+        with TestClient(app) as client:
+            seed_response = client.post("/seed")
+            if seed_response.status_code != 200:
+                issues.append(
+                    f"BattleBuddy seed endpoint returned HTTP {seed_response.status_code}: {_validation_detail(seed_response)}"
+                )
+                return issues
+
+            upload_response = client.post(
+                "/api/student-documents/upload",
+                data={
+                    "course_tag": "NET-301",
+                    "document_category": "lecture_notes",
+                },
+                files={
+                    "file": (
+                        "net301_notes.md",
+                        (
+                            "# NET-301 Notes\n"
+                            "Subnetting practice labs are required every week.\n"
+                            "Bring your calculator to the subnetting lab review.\n"
+                        ).encode("utf-8"),
+                        "text/markdown",
+                    )
+                },
+            )
+            if upload_response.status_code != 200:
+                issues.append(
+                    f"BattleBuddy student document upload endpoint returned HTTP {upload_response.status_code}: {_validation_detail(upload_response)}"
+                )
+                return issues
+
+            upload_payload = upload_response.json()
+            record = upload_payload.get("record")
+            if not isinstance(record, dict):
+                issues.append("BattleBuddy student document upload endpoint did not return a structured document record.")
+                return issues
+            if str(record.get("course_tag") or "") != "NET-301":
+                issues.append("BattleBuddy student document upload endpoint did not preserve the uploaded course tag.")
+            if str(record.get("document_category") or "") != "lecture_notes":
+                issues.append("BattleBuddy student document upload endpoint did not preserve the uploaded document category.")
+            stored_source_path = Path(str(record.get("source_path") or ""))
+            if not stored_source_path.exists():
+                issues.append("BattleBuddy student document upload endpoint did not store the selected file locally.")
+            elif docs_root not in stored_source_path.parents and stored_source_path != docs_root:
+                issues.append("BattleBuddy student document upload stored the file outside the allowlisted local course document workspace.")
+
+            list_response = client.get("/api/student-documents?limit=5")
+            if list_response.status_code != 200:
+                issues.append(
+                    f"BattleBuddy student document listing endpoint returned HTTP {list_response.status_code}: {_validation_detail(list_response)}"
+                )
+                return issues
+            list_payload = list_response.json()
+            documents = list_payload.get("documents")
+            if not isinstance(documents, list) or not documents:
+                issues.append("BattleBuddy student document listing endpoint did not return the ingested file.")
+
+            unsupported_response = client.post(
+                "/api/student-documents/upload",
+                data={
+                    "course_tag": "NET-301",
+                    "document_category": "lecture_notes",
+                },
+                files={
+                    "file": (
+                        "net301_notes.docx",
+                        b"placeholder docx bytes",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                },
+            )
+            if unsupported_response.status_code != 400:
+                issues.append(
+                    f"BattleBuddy student document upload endpoint did not reject unsupported DOCX input safely (HTTP {unsupported_response.status_code})."
+                )
+            elif "pdf, txt, and md" not in _validation_detail(unsupported_response).lower():
+                issues.append("BattleBuddy student document upload rejection for unsupported DOCX input was not explicit enough.")
+
+            grounded_chat_response = client.post(
+                "/api/chat",
+                json={
+                    "message": "What do my uploaded notes say about subnetting practice?",
+                    "mode": "student_ops",
+                    "web_enabled": True,
+                },
+            )
+            if grounded_chat_response.status_code != 200:
+                issues.append(
+                    f"BattleBuddy student grounded chat path returned HTTP {grounded_chat_response.status_code}: {_validation_detail(grounded_chat_response)}"
+                )
+                return issues
+            grounded_payload = grounded_chat_response.json()
+            if str(grounded_payload.get("source_label") or "") != "Source: Local Course Material":
+                issues.append("BattleBuddy student grounded chat response did not identify the local course material source label.")
+            reply_text = str(grounded_payload.get("reply") or "")
+            if "Grounded sources:" not in reply_text or "chunk" not in reply_text.lower():
+                issues.append("BattleBuddy student grounded chat response did not cite retrieved document chunks in the answer text.")
+            source_items = grounded_payload.get("source_items")
+            if not isinstance(source_items, list) or not source_items:
+                issues.append("BattleBuddy student grounded chat response did not attach structured evidence items.")
+
+            insufficient_response = client.post(
+                "/api/chat",
+                json={
+                    "message": "What do my uploaded notes say about interstellar llama harmonics and quaternion pastry theorems?",
+                    "mode": "student_ops",
+                    "web_enabled": True,
+                },
+            )
+            if insufficient_response.status_code != 200:
+                issues.append(
+                    f"BattleBuddy insufficient-evidence student chat path returned HTTP {insufficient_response.status_code}: {_validation_detail(insufficient_response)}"
+                )
+                return issues
+            insufficient_payload = insufficient_response.json()
+            insufficient_reply = str(insufficient_payload.get("reply") or "").lower()
+            source_status = str(insufficient_payload.get("source_status") or "").strip().lower()
+            source_items = insufficient_payload.get("source_items")
+            if not insufficient_reply:
+                issues.append("BattleBuddy student chat path did not report insufficient evidence clearly when no grounded support existed.")
+            elif source_status not in {"verified_source", "missing_verified_source", "insufficient_evidence"}:
+                issues.append("BattleBuddy student chat path returned an unexpected source status for the unsupported grounded query.")
+            elif not isinstance(source_items, list):
+                issues.append("BattleBuddy student chat path did not return a structured source_items list for the unsupported grounded query.")
+
+            combined_response = client.post(
+                "/api/chat",
+                json={
+                    "message": "When is my next class and what do my uploaded notes say about subnetting practice?",
+                    "mode": "student_ops",
+                    "web_enabled": False,
+                },
+            )
+            if combined_response.status_code != 200:
+                issues.append(
+                    f"BattleBuddy combined student document and calendar chat path returned HTTP {combined_response.status_code}: {_validation_detail(combined_response)}"
+                )
+                return issues
+            combined_payload = combined_response.json()
+            if str(combined_payload.get("source_label") or "") != "Source: Local Course Material + Sitrep / Dashboard":
+                issues.append("BattleBuddy combined student document and calendar answer did not preserve the read-only mixed-source label.")
+            combined_reply = str(combined_payload.get("reply") or "")
+            if "Read-only calendar context:" not in combined_reply:
+                issues.append("BattleBuddy combined student answer did not expose calendar context as read-only.")
+            if combined_payload.get("proposed_actions"):
+                issues.append("BattleBuddy combined student answer should not add autonomous actions while presenting read-only calendar context.")
+    finally:
+        if previous_docs_root is None:
+            os.environ.pop("TITAN_COURSE_DOCUMENTS_DIR", None)
+        else:
+            os.environ["TITAN_COURSE_DOCUMENTS_DIR"] = previous_docs_root
+
+    return issues
+
+
 def main() -> int:
     issues: list[str] = []
     details = python_runtime_summary()
     details["student_mode_config_path"] = str(STUDENT_MODE_CONFIG_PATH)
     details["courses_root"] = str(COURSES_ROOT)
+    details["expected_supported_extensions"] = EXPECTED_EXTENSIONS
 
     issues.extend(_validate_student_mode_config())
     issues.extend(_validate_mode_aliases())
     issues.extend(_validate_policy_behavior())
     issues.extend(_validate_prompt_behavior())
     issues.extend(_validate_course_manifests())
+    issues.extend(_validate_battlebuddy_student_documents())
 
     return print_validation_report("Titan Student Mode Validation", issues, details)
 

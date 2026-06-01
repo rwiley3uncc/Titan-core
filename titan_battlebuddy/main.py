@@ -20,6 +20,7 @@ from titan_core.api.calendar_sources import router as calendar_sources_router
 from titan_core.api.chat import router as chat_router
 from titan_core.api.execute import router as execute_router
 from titan_core.api.sitrep import router as sitrep_router
+from titan_core.api.student_documents import router as student_documents_router
 from titan_core.config import get_search_provider, is_verified_web_enabled, settings
 from titan_core.db import Base, SessionLocal, engine
 from titan_core.event_log import emit_battlebuddy_event
@@ -55,6 +56,7 @@ app.include_router(chat_router, prefix="/api")
 app.include_router(calendar_sources_router, prefix="/api")
 app.include_router(execute_router, prefix="/api")
 app.include_router(sitrep_router, prefix="/api")
+app.include_router(student_documents_router, prefix="/api")
 
 
 @app.on_event("startup")

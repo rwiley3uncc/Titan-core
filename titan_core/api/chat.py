@@ -14,6 +14,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from titan_core.titan_ai_imports import enable_titan_ai_imports
+from titan_core.titan_shared_imports import ensure_titan_shared_on_path
 from titan_core.action_log import load_action_log, log_action, make_action_log_entry
 from titan_core.agent import AgentAction, AgentPlan, plan_agent_action, plan_agent_or_plan, validate_agent_action, validate_agent_plan
 from titan_core.agent_memory import get_behavior_patterns
@@ -76,6 +78,11 @@ from titan_core.verified_sources import (
     missing_verified_source_reply,
 )
 from titan_core.verified_web import build_verified_web_context
+
+enable_titan_ai_imports()
+ensure_titan_shared_on_path()
+
+from titan_ai.course_qa_service import answer_course_question  # noqa: E402
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -148,6 +155,40 @@ def _emit_chat_response_event(finalized: ChatResponse) -> None:
         approved=False,
         status="completed",
     )
+
+
+def _student_course_source_items(answer_payload: dict[str, object]) -> list[dict[str, object]]:
+    answer_section = answer_payload.get("answer")
+    if not isinstance(answer_section, dict):
+        return []
+    evidence = answer_section.get("evidence")
+    if not isinstance(evidence, list):
+        return []
+
+    items: list[dict[str, object]] = []
+    for entry in evidence:
+        if not isinstance(entry, dict):
+            continue
+        items.append(
+            {
+                "title": str(entry.get("filename") or "Local course material").strip(),
+                "chunk_id": str(entry.get("chunk_id") or "").strip(),
+                "course_tag": str(entry.get("course_tag") or "").strip(),
+                "category": str(entry.get("category") or "").strip(),
+                "score": float(entry.get("relevance_score") or 0.0),
+                "excerpt": str(entry.get("excerpt") or "").strip(),
+            }
+        )
+    return items
+
+
+def _student_course_source_names(answer_payload: dict[str, object]) -> list[str]:
+    names: list[str] = []
+    for item in _student_course_source_items(answer_payload):
+        title = str(item.get("title") or "").strip()
+        if title and title not in names:
+            names.append(title)
+    return names
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -264,6 +305,39 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         intent = personal_intent
         if intent:
             payload = build_sitrep_payload(weather_summary="")
+            if is_student_assistant_mode(mode) and not file_content:
+                student_answer = answer_course_question(clean_text, limit=4)
+                source_items = _student_course_source_items(student_answer)
+                if source_items:
+                    details = get_verified_source_details(clean_text, {"personal_intent": intent, "sitrep_payload": payload})
+                    calendar_reply = personal_assistant_response(intent, payload).reply
+                    combined_reply = (
+                        f"{str(student_answer.get('answer', {}).get('answer_text') or '').strip()}\n\n"
+                        f"Read-only calendar context:\n{calendar_reply}"
+                    )
+                    source_names = _student_course_source_names(student_answer)
+                    for name in details.names:
+                        if name not in source_names:
+                            source_names.append(name)
+                    source_items.append(
+                        {
+                            "title": "sitrep payload",
+                            "type": "calendar_source_data",
+                            "excerpt": calendar_reply,
+                        }
+                    )
+                    return _finalize_with_metadata(
+                        clean_text,
+                        ChatResponse(reply=combined_reply, proposed_actions=[]),
+                        _emit_chat_response_event,
+                        route_used="personal_grounded",
+                        source_type="local_course_material",
+                        source_status="verified_source",
+                        source_label="Source: Local Course Material + Sitrep / Dashboard",
+                        source_names=source_names,
+                        source_items=source_items,
+                        confidence=str(student_answer.get("answer", {}).get("confidence") or details.confidence or "medium"),
+                    )
             details = get_verified_source_details(clean_text, {"personal_intent": intent, "sitrep_payload": payload})
             source_meta = _source_metadata(
                 source_type="sitrep",
@@ -300,26 +374,37 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
 
     if is_personal_assistant_mode(mode) and route_used == "verified_knowledge":
         if is_student_assistant_mode(mode) and not file_content:
-            course_retrieval = retrieve_course_context(clean_text)
-            if course_retrieval is not None:
-                verified_context["course_retrieval"] = course_retrieval
+            student_answer = answer_course_question(clean_text, limit=5)
+            source_items = _student_course_source_items(student_answer)
+            if source_items:
                 emit_battlebuddy_event(
                     subsystem="battlebuddy",
                     severity="INFO",
                     event_type="student_course_retrieval_completed",
                     summary="Local course retrieval completed for student mode.",
                     details=(
-                        f"Hits: {len(course_retrieval.hits)} | "
-                        f"Courses: {course_retrieval.course_count} | "
-                        f"Source files: {course_retrieval.source_file_count} | "
-                        f"Chunks: {course_retrieval.indexed_chunk_count} | "
-                        f"Unsupported files: {len(course_retrieval.unsupported_files)} | "
-                        f"Confidence: {course_retrieval.confidence} | "
-                        f"Latest source mtime: {course_retrieval.latest_source_mtime or 'unknown'}"
+                        f"Evidence items: {len(source_items)} | "
+                        f"Sources: {len(_student_course_source_names(student_answer))} | "
+                        f"Confidence: {str(student_answer.get('answer', {}).get('confidence') or 'medium')}"
                     ),
-                    confidence=0.9 if course_retrieval.confidence == "high" else 0.7,
+                    confidence=0.9 if str(student_answer.get("answer", {}).get("confidence") or "") == "high" else 0.7,
                     risk="low",
                     status="completed",
+                )
+                return _finalize_with_metadata(
+                    clean_text,
+                    ChatResponse(
+                        reply=str(student_answer.get("answer", {}).get("answer_text") or "").strip(),
+                        proposed_actions=[],
+                    ),
+                    _emit_chat_response_event,
+                    route_used="verified_knowledge",
+                    source_type="local_course_material",
+                    source_status="verified_source",
+                    source_label="Source: Local Course Material",
+                    source_names=_student_course_source_names(student_answer),
+                    source_items=source_items,
+                    confidence=str(student_answer.get("answer", {}).get("confidence") or "medium"),
                 )
             else:
                 emit_battlebuddy_event(
@@ -332,6 +417,43 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
                     risk="low",
                     status="completed",
                 )
+                course_retrieval = retrieve_course_context(clean_text)
+                if course_retrieval is not None:
+                    verified_context["course_retrieval"] = course_retrieval
+                    emit_battlebuddy_event(
+                        subsystem="battlebuddy",
+                        severity="INFO",
+                        event_type="student_course_retrieval_completed",
+                        summary="Legacy local course retrieval completed for student mode fallback.",
+                        details=(
+                            f"Hits: {len(course_retrieval.hits)} | "
+                            f"Courses: {course_retrieval.course_count} | "
+                            f"Source files: {course_retrieval.source_file_count} | "
+                            f"Chunks: {course_retrieval.indexed_chunk_count} | "
+                            f"Unsupported files: {len(course_retrieval.unsupported_files)} | "
+                            f"Confidence: {course_retrieval.confidence} | "
+                            f"Latest source mtime: {course_retrieval.latest_source_mtime or 'unknown'}"
+                        ),
+                        confidence=0.9 if course_retrieval.confidence == "high" else 0.7,
+                        risk="low",
+                        status="completed",
+                    )
+                else:
+                    return _finalize_with_metadata(
+                        clean_text,
+                        ChatResponse(
+                            reply=missing_verified_source_reply(clean_text),
+                            proposed_actions=[],
+                        ),
+                        _emit_chat_response_event,
+                        route_used="verified_knowledge",
+                        source_type="local_course_material",
+                        source_status="missing_verified_source",
+                        source_label="Source: Local Course Material",
+                        source_names=[],
+                        source_items=[],
+                        confidence=str(student_answer.get("answer", {}).get("confidence") or "low"),
+                    )
 
         details = get_verified_source_details(clean_text, verified_context)
         attempted_lookup = False

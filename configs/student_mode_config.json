@@ -25,9 +25,9 @@
     "local_only": true,
     "read_only": true,
     "supported_extensions": [
+      ".pdf",
       ".md",
-      ".txt",
-      ".json"
+      ".txt"
     ],
     "persistent_background_indexing": false
   }

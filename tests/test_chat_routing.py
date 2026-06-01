@@ -268,7 +268,7 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertEqual(response.route_used, "verified_knowledge")
         self.assertEqual(response.source_type, "local_course_material")
         self.assertEqual(response.source_status, "verified_source")
-        self.assertEqual(response.source_label, "Source: Local Course Material")
+        self.assertEqual(response.source_label, "Source: Demo / Example Course Material")
         self.assertIn("Example Student Ops Course: example_note.md", response.source_names)
         self.assertIn("Local course sources used:", response.reply)
 

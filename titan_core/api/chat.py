@@ -175,6 +175,7 @@ def _student_course_source_items(answer_payload: dict[str, object]) -> list[dict
                 "chunk_id": str(entry.get("chunk_id") or "").strip(),
                 "course_tag": str(entry.get("course_tag") or "").strip(),
                 "category": str(entry.get("category") or "").strip(),
+                "source_kind": str(entry.get("source_kind") or "user_upload").strip(),
                 "score": float(entry.get("relevance_score") or 0.0),
                 "excerpt": str(entry.get("excerpt") or "").strip(),
             }
@@ -417,9 +418,27 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
                     risk="low",
                     status="completed",
                 )
+                if bool(student_answer.get("has_user_upload_for_course")):
+                    return _finalize_with_metadata(
+                        clean_text,
+                        ChatResponse(
+                            reply=str(student_answer.get("answer", {}).get("answer_text") or "").strip(),
+                            proposed_actions=[],
+                        ),
+                        _emit_chat_response_event,
+                        route_used="verified_knowledge",
+                        source_type="local_course_material",
+                        source_status="missing_verified_source",
+                        source_label="Source: Local Course Material",
+                        source_names=[],
+                        source_items=[],
+                        confidence=str(student_answer.get("answer", {}).get("confidence") or "low"),
+                    )
+
                 course_retrieval = retrieve_course_context(clean_text)
                 if course_retrieval is not None:
                     verified_context["course_retrieval"] = course_retrieval
+                    verified_context["course_retrieval_is_demo_fallback"] = True
                     emit_battlebuddy_event(
                         subsystem="battlebuddy",
                         severity="INFO",
@@ -550,6 +569,12 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             if retrieval is not None:
                 source_names = getattr(retrieval, "names", []) or []
                 confidence_label = str(getattr(retrieval, "confidence", details.confidence) or details.confidence)
+                if bool(verified_context.get("course_retrieval_is_demo_fallback")):
+                    reply_text = (
+                        "No matching uploaded class documents were retrieved for this question. "
+                        "Titan is falling back to demo/example course material.\n\n"
+                        f"{reply_text}"
+                    )
                 if confidence_label == "low":
                     reply_text = (
                         "Local course retrieval found only weak support. Treat this as a partial grounded answer.\n\n"
@@ -575,6 +600,9 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             if source_type == "local_course_material"
             else source_items
         )
+        response_source_label = source_meta["source_label"]
+        if source_type == "local_course_material" and bool(verified_context.get("course_retrieval_is_demo_fallback")):
+            response_source_label = "Source: Demo / Example Course Material"
         return _finalize_with_metadata(
             clean_text,
             ChatResponse(
@@ -587,7 +615,7 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             route_used="verified_knowledge",
             source_type=source_meta["source_type"],
             source_status=source_meta["source_status"],
-            source_label=source_meta["source_label"],
+            source_label=response_source_label,
             source_names=source_meta["source_names"],
             source_urls=source_meta["source_urls"],
             source_items=response_source_items,

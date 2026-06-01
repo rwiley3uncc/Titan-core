@@ -14,12 +14,14 @@ enable_titan_ai_imports()
 ensure_titan_shared_on_path()
 
 from titan_ai.ai_types import AIMessage, AIRequest
+from titan_ai.course_qa_service import answer_course_question
 from titan_ai.prompts import build_system_prompt
 from titan_core.chat_mode import is_personal_assistant_mode, safe_mode
 from titan_core.course_manifest import list_course_manifests, validate_course_manifest_record
 from titan_core.policy import apply_policy
 from titan_core.schemas import BrainInput, BrainOutput, ChatMessage, ProposedAction
 from titan_battlebuddy.main import app
+from titan_shared.course_document_store import ingest_course_document, search_course_documents
 from titan_shared.runtime_validation import print_validation_report, python_runtime_summary
 
 
@@ -27,6 +29,10 @@ ROOT = Path(__file__).resolve().parent
 STUDENT_MODE_CONFIG_PATH = ROOT / "configs" / "student_mode_config.json"
 COURSES_ROOT = ROOT / "data" / "courses"
 EXPECTED_EXTENSIONS = [".pdf", ".md", ".txt"]
+EXPECTED_STUDENT_DOCUMENT_ROUTES = (
+    ("GET", "/api/student-documents"),
+    ("POST", "/api/student-documents/upload"),
+)
 
 
 def _validate_student_mode_config() -> list[str]:
@@ -152,6 +158,37 @@ def _validate_course_manifests() -> list[str]:
     return issues
 
 
+def _route_table_snapshot() -> list[dict[str, object]]:
+    route_entries: list[dict[str, object]] = []
+    for route in app.routes:
+        path = str(getattr(route, "path", "") or "").strip()
+        methods = sorted(str(method).strip() for method in (getattr(route, "methods", None) or []) if str(method).strip())
+        if not path:
+            continue
+        route_entries.append(
+            {
+                "path": path,
+                "methods": methods,
+            }
+        )
+    return sorted(route_entries, key=lambda item: (str(item["path"]), ",".join(item["methods"])))
+
+
+def _validate_battlebuddy_route_registration() -> list[str]:
+    issues: list[str] = []
+    registered_routes = {
+        (method, str(route["path"]))
+        for route in _route_table_snapshot()
+        for method in route["methods"]
+    }
+    for method, path in EXPECTED_STUDENT_DOCUMENT_ROUTES:
+        if (method, path) not in registered_routes:
+            issues.append(
+                f"BattleBuddy route table is missing {method} {path}."
+            )
+    return issues
+
+
 def _validation_detail(response) -> str:
     try:
         payload = response.json()
@@ -174,6 +211,36 @@ def _validate_battlebuddy_student_documents() -> list[str]:
     os.environ["TITAN_COURSE_DOCUMENTS_DIR"] = str(docs_root)
 
     try:
+        seed_same_course_path = temp_root / "seed_itsc_2181_notes.md"
+        seed_same_course_path.write_text(
+            (
+                "# Example ITSC 2181 Notes\n"
+                "This example file mentions attendance in a generic demo context.\n"
+            ),
+            encoding="utf-8",
+        )
+        ingest_course_document(
+            str(seed_same_course_path),
+            course_tag="ITSC 2181",
+            document_category="lecture_notes",
+            source_kind="seed_example",
+        )
+
+        seed_demo_course_path = temp_root / "demo_itsc_9999_syllabus.md"
+        seed_demo_course_path.write_text(
+            (
+                "# DEMO-101 Syllabus\n"
+                "Attendance is required for the demo course and makeup work is limited.\n"
+            ),
+            encoding="utf-8",
+        )
+        ingest_course_document(
+            str(seed_demo_course_path),
+            course_tag="DEMO-101",
+            document_category="syllabus",
+            source_kind="seed_example",
+        )
+
         with TestClient(app) as client:
             seed_response = client.post("/seed")
             if seed_response.status_code != 200:
@@ -185,16 +252,16 @@ def _validate_battlebuddy_student_documents() -> list[str]:
             upload_response = client.post(
                 "/api/student-documents/upload",
                 data={
-                    "course_tag": "NET-301",
-                    "document_category": "lecture_notes",
+                    "course_tag": "ITSC 2181",
+                    "document_category": "syllabus",
                 },
                 files={
                     "file": (
-                        "net301_notes.md",
+                        "itsc2181_syllabus.md",
                         (
-                            "# NET-301 Notes\n"
-                            "Subnetting practice labs are required every week.\n"
-                            "Bring your calculator to the subnetting lab review.\n"
+                            "# ITSC 2181 Syllabus\n"
+                            "Attendance is required for every class meeting.\n"
+                            "Late work is accepted for up to three days with a grade penalty.\n"
                         ).encode("utf-8"),
                         "text/markdown",
                     )
@@ -211,15 +278,62 @@ def _validate_battlebuddy_student_documents() -> list[str]:
             if not isinstance(record, dict):
                 issues.append("BattleBuddy student document upload endpoint did not return a structured document record.")
                 return issues
-            if str(record.get("course_tag") or "") != "NET-301":
+            if str(record.get("course_tag") or "") != "ITSC 2181":
                 issues.append("BattleBuddy student document upload endpoint did not preserve the uploaded course tag.")
-            if str(record.get("document_category") or "") != "lecture_notes":
+            if str(record.get("document_category") or "") != "syllabus":
                 issues.append("BattleBuddy student document upload endpoint did not preserve the uploaded document category.")
+            if str(record.get("source_kind") or "") != "user_upload":
+                issues.append("BattleBuddy student document upload endpoint did not mark the document as a user_upload.")
             stored_source_path = Path(str(record.get("source_path") or ""))
             if not stored_source_path.exists():
                 issues.append("BattleBuddy student document upload endpoint did not store the selected file locally.")
             elif docs_root not in stored_source_path.parents and stored_source_path != docs_root:
                 issues.append("BattleBuddy student document upload stored the file outside the allowlisted local course document workspace.")
+
+            ranked_results = search_course_documents(
+                "What does the ITSC 2181 syllabus say about attendance?",
+                limit=5,
+            )
+            if not ranked_results:
+                issues.append("Course document search did not return any ranked results for the uploaded syllabus query.")
+                return issues
+            top_result = ranked_results[0]
+            if str(top_result.get("filename") or "") != "itsc2181_syllabus.md":
+                issues.append("Uploaded syllabus was not ranked ahead of seed/example material.")
+            if str(top_result.get("course_tag") or "") != "ITSC 2181":
+                issues.append("Exact course tag match did not outrank unrelated course material.")
+            if any(
+                str(item.get("source_kind") or "") == "seed_example"
+                and str(item.get("course_tag") or "") == "ITSC 2181"
+                for item in ranked_results
+            ):
+                issues.append("Seed/example documents were not excluded when matching uploaded documents existed for the selected course.")
+
+            upload_answer = answer_course_question("What does the ITSC 2181 syllabus say about attendance?")
+            answer_payload = upload_answer.get("answer")
+            if not isinstance(answer_payload, dict):
+                issues.append("Course Q&A did not return a structured answer payload for the uploaded syllabus query.")
+                return issues
+            evidence = answer_payload.get("evidence")
+            if not isinstance(evidence, list) or not evidence:
+                issues.append("Course Q&A did not attach evidence for the uploaded syllabus query.")
+                return issues
+            first_evidence = evidence[0]
+            if not isinstance(first_evidence, dict) or str(first_evidence.get("filename") or "") != "itsc2181_syllabus.md":
+                issues.append("Course Q&A did not prioritize the uploaded syllabus evidence.")
+            if any(str(item.get("source_kind") or "") != "user_upload" for item in evidence if isinstance(item, dict)):
+                issues.append("Course Q&A mixed seed/example evidence into a query that had matching uploaded course documents.")
+
+            demo_answer = answer_course_question("What does the DEMO-101 syllabus say about attendance?")
+            demo_payload = demo_answer.get("answer")
+            if not isinstance(demo_payload, dict):
+                issues.append("Course Q&A did not return a structured answer payload for the demo fallback query.")
+                return issues
+            demo_evidence = demo_payload.get("evidence")
+            if not isinstance(demo_evidence, list) or not demo_evidence:
+                issues.append("Course Q&A did not fall back to seed/example material when no uploaded documents existed.")
+            elif any(str(item.get("source_kind") or "") != "seed_example" for item in demo_evidence if isinstance(item, dict)):
+                issues.append("Course Q&A fallback did not clearly stay within seed/example material when no uploads existed.")
 
             list_response = client.get("/api/student-documents?limit=5")
             if list_response.status_code != 200:
@@ -256,7 +370,7 @@ def _validate_battlebuddy_student_documents() -> list[str]:
             grounded_chat_response = client.post(
                 "/api/chat",
                 json={
-                    "message": "What do my uploaded notes say about subnetting practice?",
+                    "message": "What does the ITSC 2181 syllabus say about attendance?",
                     "mode": "student_ops",
                     "web_enabled": True,
                 },
@@ -275,6 +389,10 @@ def _validate_battlebuddy_student_documents() -> list[str]:
             source_items = grounded_payload.get("source_items")
             if not isinstance(source_items, list) or not source_items:
                 issues.append("BattleBuddy student grounded chat response did not attach structured evidence items.")
+            elif str(source_items[0].get("title") or "") != "itsc2181_syllabus.md":
+                issues.append("BattleBuddy grounded chat did not cite the uploaded syllabus filename first.")
+            elif str(source_items[0].get("source_kind") or "") != "user_upload":
+                issues.append("BattleBuddy grounded chat did not preserve the user_upload source kind in its evidence items.")
 
             insufficient_response = client.post(
                 "/api/chat",
@@ -303,7 +421,7 @@ def _validate_battlebuddy_student_documents() -> list[str]:
             combined_response = client.post(
                 "/api/chat",
                 json={
-                    "message": "When is my next class and what do my uploaded notes say about subnetting practice?",
+                    "message": "When is my next class and what does the ITSC 2181 syllabus say about attendance?",
                     "mode": "student_ops",
                     "web_enabled": False,
                 },
@@ -336,12 +454,14 @@ def main() -> int:
     details["student_mode_config_path"] = str(STUDENT_MODE_CONFIG_PATH)
     details["courses_root"] = str(COURSES_ROOT)
     details["expected_supported_extensions"] = EXPECTED_EXTENSIONS
+    details["battlebuddy_student_document_routes"] = _route_table_snapshot()
 
     issues.extend(_validate_student_mode_config())
     issues.extend(_validate_mode_aliases())
     issues.extend(_validate_policy_behavior())
     issues.extend(_validate_prompt_behavior())
     issues.extend(_validate_course_manifests())
+    issues.extend(_validate_battlebuddy_route_registration())
     issues.extend(_validate_battlebuddy_student_documents())
 
     return print_validation_report("Titan Student Mode Validation", issues, details)

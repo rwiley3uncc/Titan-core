@@ -710,8 +710,9 @@ class ChatRoutingTests(unittest.TestCase):
         self.assertIn("id=\"voiceStatus\"", content)
         self.assertIn("function hasReadableSitrepText", content)
         self.assertIn("function isBenignSpeechError", content)
+        self.assertIn("function describeSpeechError", content)
         self.assertIn("Read Sitrep is unavailable because this browser does not support speech synthesis.", content)
-        self.assertIn("Read Sitrep did not complete in this browser. The assistant stayed in read-only mode.", content)
+        self.assertIn("Read Sitrep did not complete in this browser. Speech error:", content)
 
     def test_dynamic_config_helpers(self) -> None:
         with patch.dict("os.environ", {

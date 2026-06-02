@@ -49,6 +49,9 @@ body {
 }
 
 body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   background:
     radial-gradient(circle at top, rgba(38, 92, 142, 0.24), transparent 45%),
     linear-gradient(180deg, var(--bg-deep) 0%, var(--bg) 48%, #03070d 100%);
@@ -189,8 +192,11 @@ body {
   max-width: 100%;
   margin: 0;
   padding: 8px 10px 10px;
-  height: calc(100vh - 132px);
-  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
 }
 
 /* TOP BAR */
@@ -214,6 +220,14 @@ body {
   gap: 3px;
   color: #d9e7f5;
   font-size: 0.9rem;
+}
+
+.topbar-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .topbar-left strong {
@@ -381,11 +395,112 @@ button:focus-visible {
 /* DASHBOARD */
 
 .dashboard {
-  display: grid;
-  grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  height: calc(100% - 58px);
+  height: auto;
   min-height: 0;
+  overflow: visible;
+}
+
+.sitrep-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(106, 157, 199, 0.16);
+  background: rgba(7, 18, 29, 0.74);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
+}
+
+.right-column > .sitrep-strip {
+  flex: 0.75 1 0;
+  min-height: 180px;
+  align-items: stretch;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.right-column > .sitrep-strip .sitrep-strip-summary,
+.right-column > .sitrep-strip .sitrep-strip-weather,
+.right-column > .sitrep-strip #warnings {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sitrep-strip-label {
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sitrep-strip-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #d7e5f2;
+  font-size: 0.95rem;
+  font-family: inherit;
+  white-space: normal;
+  overflow-y: auto;
+  overflow-x: hidden;
+  text-overflow: unset;
+  line-height: 1.5;
+  padding-right: 4px;
+}
+
+.sitrep-strip-weather {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.sitrep-body {
+  display: grid;
+  gap: 12px;
+}
+
+.sitrep-intro {
+  color: var(--header);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.sitrep-section {
+  display: grid;
+  gap: 6px;
+}
+
+.sitrep-section-title {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sitrep-row {
+  color: #d7e5f2;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.sitrep-row--subtle {
+  color: var(--muted);
+}
+
+.primary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.92fr);
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 0;
+  align-items: stretch;
+  overflow: visible;
 }
 
 /* COLUMNS */
@@ -395,13 +510,18 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 10px;
-
-  height: 100%;
   min-height: 0;
 }
 
 .left-column {
+  overflow: visible;
+  flex: 0 0 auto;
+}
+
+.right-column {
+  min-width: 0;
   overflow: hidden;
+  min-height: 0;
 }
 
 /* PANELS */
@@ -809,6 +929,18 @@ textarea:focus {
   box-shadow: 0 0 0 2px rgba(74, 194, 255, 0.16), 0 12px 28px rgba(0, 0, 0, 0.16);
 }
 
+.conversation-composer {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(106, 157, 199, 0.14);
+  background: linear-gradient(180deg, rgba(9, 23, 37, 0), rgba(9, 23, 37, 0.92) 26%, rgba(9, 23, 37, 0.98));
+  flex: 0 0 auto;
+  min-height: 210px;
+  overflow: visible;
+}
+
 .dev-upload {
   display: none;
   margin-top: 10px;
@@ -824,7 +956,6 @@ textarea:focus {
 
 .student-documents {
   display: none;
-  margin-top: 10px;
   padding: 9px;
   border: 1px solid rgba(255, 192, 92, 0.22);
   border-radius: 12px;
@@ -897,8 +1028,13 @@ textarea:focus {
 
 .student-documents-list {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 8px;
   margin-top: 10px;
+  max-height: none;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .student-documents-card {
@@ -906,6 +1042,74 @@ textarea:focus {
   border-radius: 10px;
   background: rgba(10, 26, 42, 0.68);
   border: 1px solid rgba(255, 192, 92, 0.18);
+}
+
+.student-documents-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.student-documents-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 192, 92, 0.14);
+  border: 1px solid rgba(255, 192, 92, 0.24);
+  color: #ffe9ae;
+  font-size: 11px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.student-documents-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1.35 1 0;
+  min-height: 340px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.panel-heading {
+  min-width: 0;
+}
+
+.panel-heading h2,
+.panel-heading h3 {
+  margin: 0 0 4px;
+}
+
+.panel-toggle {
+  padding: 7px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.secondary-panels {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-top: 20px;
+}
+
+.secondary-panels .panel {
+  min-height: 0;
+}
+
+.secondary-panels .list-window {
+  max-height: clamp(120px, 16vh, 180px);
 }
 
 .voice-settings {
@@ -1543,37 +1747,74 @@ textarea:focus {
 }
 
 .conversation-panel {
-  height: 100%;
+  min-height: clamp(520px, 62vh, 760px);
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.conversation-shell {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
+  height: auto;
+  flex: 1 1 auto;
+  overflow: visible;
+}
+
+#chat {
+  flex: 1 1 auto;
+  min-height: clamp(260px, 34vh, 420px);
+  height: auto;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .conversation-panel textarea {
   flex: 0 0 auto;
+  min-height: 110px;
+  max-height: 20vh;
 }
 
 @media (max-width: 1100px) {
-  .dashboard {
+  .primary-row {
     grid-template-columns: 1fr;
-    overflow-y: auto;
-    padding-right: 2px;
+    max-height: none;
   }
 
   .container {
-    height: auto;
-    min-height: calc(100vh - 132px);
+    min-height: 0;
   }
 
-  .left-column {
-    overflow: visible;
-  }
-
-  .grid-two {
-    grid-template-columns: 1fr 1fr;
+  .secondary-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   #chat {
-    height: clamp(220px, 34vh, 340px);
-    max-height: 340px;
+    min-height: clamp(260px, 40vh, 520px);
+  }
+}
+
+@media (max-width: 860px) {
+  .topbar-right {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .sitrep-strip {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .student-documents-row {
+    align-items: stretch;
+  }
+
+  .secondary-panels {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1621,11 +1862,7 @@ textarea:focus {
 @media (max-width: 760px) {
   .container {
     padding: 12px;
-    height: auto;
-  }
-
-  .grid-two {
-    grid-template-columns: 1fr;
+    min-height: 0;
   }
 
   .panel {
@@ -1637,8 +1874,7 @@ textarea:focus {
   }
 
   #chat {
-    height: 260px;
-    max-height: 260px;
+    min-height: clamp(220px, 34vh, 360px);
   }
 }
 
@@ -1672,102 +1908,80 @@ textarea:focus {
         <div><strong>Morning Sitrep:</strong> 08:00</div>
         <div id="lastUpdated">Last updated: not loaded yet</div>
       </div>
-
-      <div class="button-row button-row--header">
-        <button id="refreshSitrepBtn" type="button">Refresh Sitrep</button>
-        <button id="speakSitrepBtn" type="button">Read Sitrep</button>
-        <button id="stopVoiceBtn" type="button">Stop Voice</button>
-        <button id="voiceInputBtn" type="button">Voice Input</button>
+      <div class="topbar-right">
+        <div class="button-row button-row--header">
+          <button id="refreshSitrepBtn" type="button">Refresh Sitrep</button>
+          <button id="speakSitrepBtn" type="button">Read Sitrep</button>
+          <button id="stopVoiceBtn" type="button">Stop Voice</button>
+          <button id="voiceInputBtn" type="button">Voice Input</button>
+        </div>
+        <div id="voiceStatus" class="voice-control-value" aria-live="polite">Voice idle.</div>
       </div>
-      <div id="voiceStatus" class="voice-control-value" aria-live="polite">Voice idle.</div>
     </div>
 
-    <div class="dashboard">
-      <div class="left-column">
-        <div class="panel">
-          <h2>Morning Sitrep</h2>
-          <div class="mini">What needs attention today and what is still open</div>
-          <div id="warnings"></div>
-          <div id="sitrepText" class="sitrep-text">Loading sitrep...</div>
-          <div id="weatherLine" class="stat"></div>
-        </div>
-
-        <div class="grid-two">
-          <div class="panel list-panel">
-            <h3>Today's Schedule</h3>
-            <div class="list-window">
-              <div id="todayList" class="list"></div>
-            </div>
-          </div>
-
-          <div class="panel list-panel">
-            <h3>Must Do Today</h3>
-            <div class="list-window">
-              <div id="mustDoList" class="list"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid-two">
-          <div class="panel list-panel">
-            <h3>Still Open</h3>
-            <div class="list-window">
-              <div id="stillOpenList" class="list"></div>
-            </div>
-          </div>
-
-          <div class="panel list-panel">
-            <h3>Suggested Study Blocks</h3>
-            <div class="list-window">
-              <div id="suggestedBlocksList" class="list"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="right-column">
-        <div class="panel conversation-panel">
-          <div class="conversation-header">
-            <div class="conversation-heading">
-              <h3>Conversation</h3>
-              <div class="conversation-status-row">
-                <div class="assistant-state-line" data-state="idle">
-                  <span class="assistant-state-label">Assistant State</span>
-                  <span id="assistantStateValue" class="assistant-state-value">Idle</span>
+    <div id="workspaceDashboard" class="dashboard">
+      <div class="primary-row">
+        <div class="right-column">
+          <div class="panel conversation-panel">
+            <div class="conversation-shell">
+              <div class="conversation-header">
+                <div class="conversation-heading">
+                  <h3>Conversation</h3>
+                  <div class="conversation-status-row">
+                    <div class="assistant-state-line" data-state="idle">
+                      <span class="assistant-state-label">Assistant State</span>
+                      <span id="assistantStateValue" class="assistant-state-value">Idle</span>
+                    </div>
+                    <div id="voiceStateIndicator" class="voice-state-indicator" data-voice-state="idle">
+                      <span class="voice-state-dot" aria-hidden="true"></span>
+                      <span id="voiceStateValue">Voice Idle</span>
+                    </div>
+                  </div>
                 </div>
-                <div id="voiceStateIndicator" class="voice-state-indicator" data-voice-state="idle">
-                  <span class="voice-state-dot" aria-hidden="true"></span>
-                  <span id="voiceStateValue">Voice Idle</span>
+              </div>
+              <div id="chat"></div>
+              <div class="conversation-composer">
+                <div id="activeModeLabel" class="active-mode">Active Mode: Personal Assistant</div>
+                <div class="mode-row">
+                  <label for="assistantMode"><strong>Assistant Mode</strong></label>
+                  <select id="assistantMode">
+                    <option value="personal_general">Personal Assistant</option>
+                    <option value="student_ops">Student Operations</option>
+                    <option value="development_assistant">Development Assistant</option>
+                  </select>
+                  <div id="modeHint" class="mode-hint">Personal Assistant: planning, reminders, drafting, sitreps.<br>Student Operations: class sitreps, study planning, grounded course help.<br>Development Assistant: code help, debugging, file guidance, safe changes.</div>
+                </div>
+                <textarea id="msg" rows="3" placeholder="Type a message or use Voice Input..."></textarea>
+                <div id="devUploadSection" class="dev-upload">
+                  <div class="dev-upload-title">Development File Review</div>
+                  <div class="dev-upload-row">
+                    <input
+                      id="devFileInput"
+                      type="file"
+                      accept=".py,.js,.ts,.html,.css,.json,.md,.txt,.gd,.tscn,.yml,.yaml"
+                    />
+                    <button id="clearDevFileBtn" type="button">Clear File</button>
+                  </div>
+                  <div id="devFileName" class="dev-upload-meta">No file selected.</div>
+                </div>
+                <div class="button-row">
+                  <button id="sendBtn" type="button">Send</button>
+                  <button id="newChatBtn" type="button">New Chat</button>
+                  <button id="openActionsBtn" type="button">Proposed Actions</button>
+                  <button id="openSettingsBtn" type="button">Settings</button>
                 </div>
               </div>
             </div>
           </div>
-          <div id="chat"></div>
-          <div id="activeModeLabel" class="active-mode">Active Mode: Personal Assistant</div>
-          <div class="mode-row">
-            <label for="assistantMode"><strong>Assistant Mode</strong></label>
-            <select id="assistantMode">
-              <option value="personal_general">Personal Assistant</option>
-              <option value="student_ops">Student Operations</option>
-              <option value="development_assistant">Development Assistant</option>
-            </select>
-            <div id="modeHint" class="mode-hint">Personal Assistant: planning, reminders, drafting, sitreps.<br>Student Operations: class sitreps, study planning, grounded course help.<br>Development Assistant: code help, debugging, file guidance, safe changes.</div>
-          </div>
-          <textarea id="msg" rows="3" placeholder="Type a message or use Voice Input..."></textarea>
-          <div id="devUploadSection" class="dev-upload">
-            <div class="dev-upload-title">Development File Review</div>
-            <div class="dev-upload-row">
-              <input
-                id="devFileInput"
-                type="file"
-                accept=".py,.js,.ts,.html,.css,.json,.md,.txt,.gd,.tscn,.yml,.yaml"
-              />
-              <button id="clearDevFileBtn" type="button">Clear File</button>
+        </div>
+        <div class="right-column">
+          <div id="studentDocumentSection" class="panel student-documents student-documents-panel">
+            <div class="panel-header">
+              <div class="panel-heading">
+                <h3 class="student-documents-title">Student Course Documents</h3>
+                <div class="mini">Upload class files and keep them close to the conversation.</div>
+              </div>
             </div>
-            <div id="devFileName" class="dev-upload-meta">No file selected.</div>
-          </div>
-          <div id="studentDocumentSection" class="student-documents">
-            <div class="student-documents-title">Student Course Documents</div>
             <div class="student-documents-row">
               <div class="student-documents-field">
                 <label for="studentDocFileInput">Add Class File</label>
@@ -1799,11 +2013,43 @@ textarea:focus {
               <div class="empty">No class files uploaded yet.</div>
             </div>
           </div>
-          <div class="button-row" style="margin-top:10px;">
-            <button id="sendBtn" type="button">Send</button>
-            <button id="newChatBtn" type="button">New Chat</button>
-            <button id="openActionsBtn" type="button">Proposed Actions</button>
-            <button id="openSettingsBtn" type="button">Settings</button>
+          <div id="sitrepStrip" class="sitrep-strip">
+            <div class="sitrep-strip-label">Morning Sitrep</div>
+            <div id="warnings"></div>
+            <div id="sitrepText" class="sitrep-strip-summary">Loading sitrep...</div>
+            <div id="weatherLine" class="sitrep-strip-weather"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="left-column">
+        <div class="secondary-panels">
+          <div class="panel list-panel">
+            <h3>Today's Schedule</h3>
+            <div class="list-window">
+              <div id="todayList" class="list"></div>
+            </div>
+          </div>
+
+          <div class="panel list-panel">
+            <h3>Must Do Today</h3>
+            <div class="list-window">
+              <div id="mustDoList" class="list"></div>
+            </div>
+          </div>
+
+          <div class="panel list-panel">
+            <h3>Still Open</h3>
+            <div class="list-window">
+              <div id="stillOpenList" class="list"></div>
+            </div>
+          </div>
+
+          <div class="panel list-panel">
+            <h3>Suggested Study</h3>
+            <div class="list-window">
+              <div id="suggestedBlocksList" class="list"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1936,7 +2182,7 @@ textarea:focus {
     const INITIAL_TITAN_GREETING = 'Online. How can I help?';
     const MAX_DEV_FILE_CHARS = 120000;
     const ALLOWED_DEV_FILE_EXTENSIONS = ['.py', '.js', '.ts', '.html', '.css', '.json', '.md', '.txt', '.gd', '.tscn', '.yml', '.yaml'];
-    const ALLOWED_STUDENT_DOCUMENT_EXTENSIONS = ['.pdf', '.txt', '.md'];
+    const ALLOWED_STUDENT_DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.txt', '.md'];
     const DEFAULT_VOICE_RATE = 0.95;
     const DEFAULT_VOICE_PITCH = 1.0;
     const DEFAULT_VOICE_VOLUME = 1.0;
@@ -2213,7 +2459,6 @@ textarea:focus {
       if (isStudentMode) {
         loadStudentDocuments();
       }
-
       updateHeaderStatus();
     }
 
@@ -2274,7 +2519,10 @@ textarea:focus {
 
       list.innerHTML = currentStudentDocuments.map(item => `
         <div class="student-documents-card">
-          <div class="item-title">${escapeHtml(item.filename || 'Untitled file')}</div>
+          <div class="student-documents-card-header">
+            <div class="item-title">${escapeHtml(item.filename || 'Untitled file')}</div>
+            <div class="student-documents-badge">${escapeHtml(item.source_kind === 'user_upload' ? 'User Upload' : (item.source_kind || 'Local Document'))}</div>
+          </div>
           <div class="item-meta">
             Course: ${escapeHtml(item.course_tag || 'Unknown')}<br>
             Category: ${escapeHtml(item.document_category || 'other')}<br>
@@ -2311,15 +2559,10 @@ textarea:focus {
       }
 
       const lowerName = file.name.toLowerCase();
-      if (lowerName.endsWith('.docx')) {
-        clearStudentDocumentFile();
-        setStudentDocumentStatus('DOCX is not supported yet. Use PDF, TXT, or MD.', true);
-        return;
-      }
       const allowed = ALLOWED_STUDENT_DOCUMENT_EXTENSIONS.some(ext => lowerName.endsWith(ext));
       if (!allowed) {
         clearStudentDocumentFile();
-        setStudentDocumentStatus('That file type is not supported. Use PDF, TXT, or MD.', true);
+        setStudentDocumentStatus('That file type is not supported. Use PDF, DOCX, TXT, or MD.', true);
         return;
       }
 
@@ -2415,18 +2658,57 @@ textarea:focus {
       return code === 'interrupted' || code === 'canceled' || code === 'cancelled';
     }
 
+    function describeSpeechError(event, voice) {
+      const code = String((event && event.error) || '').trim();
+      const normalized = code.toLowerCase();
+      const voiceName = voice && voice.name ? voice.name : '';
+      const voiceLabel = voiceName ? ` Voice: ${voiceName}.` : '';
+
+      if (normalized === 'voice-unavailable') {
+        return `Read Sitrep failed because the selected browser voice is unavailable.${voiceLabel}`;
+      }
+      if (normalized === 'audio-busy') {
+        return 'Read Sitrep failed because browser audio is busy. Close other voice playback and try again.';
+      }
+      if (normalized === 'audio-hardware') {
+        return 'Read Sitrep failed because no working audio output was available in this browser session.';
+      }
+      if (normalized === 'not-allowed') {
+        return 'Read Sitrep was blocked by this browser. Allow audio playback for the page and try again.';
+      }
+      if (normalized === 'synthesis-failed') {
+        return `Read Sitrep failed inside browser speech synthesis.${voiceLabel}`;
+      }
+      if (code) {
+        return `Read Sitrep did not complete in this browser. Speech error: ${code}.${voiceLabel}`;
+      }
+      return `Read Sitrep did not complete in this browser. The browser did not report a detailed speech error.${voiceLabel}`;
+    }
+
     function resetSpeechState(message = 'Voice idle.') {
       currentSpeechUtterance = null;
       setVoiceStatus(message);
       updateHeaderStatus();
     }
 
-    function preferredVoice(voices) {
+    function isLikelyOnlineVoice(voice) {
+      const name = String((voice && voice.name) || '').toLowerCase();
+      return name.includes('online');
+    }
+
+    function preferredVoice(voices, options = {}) {
       if (!voices || !voices.length) return null;
 
-      const englishVoices = voices.filter(voice => String(voice.lang || '').toLowerCase().startsWith('en'));
-      const pool = englishVoices.length ? englishVoices : voices;
-      const rankedTerms = ['natural', 'premium', 'enhanced', 'samantha', 'zira', 'aria', 'jenny', 'guy', 'davis', 'google us english', 'microsoft'];
+      const avoidOnline = options.avoidOnline !== false;
+      const excludeName = String(options.excludeName || '').trim();
+      const filtered = voices.filter(voice => !excludeName || String(voice.name || '') !== excludeName);
+      const englishVoices = filtered.filter(voice => String(voice.lang || '').toLowerCase().startsWith('en'));
+      const localEnglishVoices = englishVoices.filter(voice => !isLikelyOnlineVoice(voice));
+      const localAnyVoices = filtered.filter(voice => !isLikelyOnlineVoice(voice));
+      const pool = avoidOnline
+        ? (localEnglishVoices.length ? localEnglishVoices : (localAnyVoices.length ? localAnyVoices : (englishVoices.length ? englishVoices : filtered)))
+        : (englishVoices.length ? englishVoices : filtered);
+      const rankedTerms = ['samantha', 'zira', 'aria', 'jenny', 'guy', 'davis', 'google us english', 'microsoft', 'enhanced', 'premium', 'natural'];
 
       for (const term of rankedTerms) {
         const match = pool.find(voice => String(voice.name || '').toLowerCase().includes(term));
@@ -2439,7 +2721,11 @@ textarea:focus {
     function selectedVoice() {
       const settings = currentVoiceSettings();
       const byName = availableVoices.find(voice => voice.name === settings.voiceName);
-      return byName || preferredVoice(availableVoices);
+      if (byName && !isLikelyOnlineVoice(byName)) {
+        return byName;
+      }
+      const saferPreferred = preferredVoice(availableVoices);
+      return saferPreferred || byName || preferredVoice(availableVoices, { avoidOnline: false });
     }
 
     function populateVoiceSelect() {
@@ -2466,13 +2752,14 @@ textarea:focus {
 
       const settings = currentVoiceSettings();
       const preferred = preferredVoice(availableVoices);
-      const selectedName = availableVoices.some(voice => voice.name === settings.voiceName)
-        ? settings.voiceName
-        : (preferred ? preferred.name : '');
+      const storedVoice = availableVoices.find(voice => voice.name === settings.voiceName);
+      const selectedVoiceName = storedVoice && !isLikelyOnlineVoice(storedVoice)
+        ? storedVoice.name
+        : (preferred ? preferred.name : (storedVoice ? storedVoice.name : ''));
 
-      select.value = selectedName;
+      select.value = selectedVoiceName;
 
-      if (!settings.voiceName && preferred) {
+      if ((!settings.voiceName || (storedVoice && isLikelyOnlineVoice(storedVoice))) && preferred) {
         localStorage.setItem(VOICE_NAME_STORAGE_KEY, preferred.name);
       }
     }
@@ -3010,6 +3297,93 @@ textarea:focus {
         : warnings.map(w => `<div class="warning">${w}</div>`).join('');
     }
 
+    function sitrepSection(title, rows) {
+      const validRows = (rows || []).filter(row => String(row || '').trim().length > 0);
+      if (!validRows.length) return '';
+      return `
+        <div class="sitrep-section">
+          <div class="sitrep-section-title">${escapeHtml(title)}</div>
+          ${validRows.map(row => `<div class="sitrep-row">${escapeHtml(row)}</div>`).join('')}
+        </div>
+      `;
+    }
+
+    function buildSitrepMarkup(data) {
+      const today = (data.today || []).length;
+      const must = (data.must_do_today || []).length;
+      const open = (data.still_open || []).length;
+      const nextClass = data.next_class || null;
+      const topPriority = data.top_priority_item || (data.must_do_today || [])[0];
+      const upcomingAssignments = data.upcoming_assignments || [];
+      const dueThisWeekCount =
+        (data.due_today_assignments || []).length
+        + (data.due_tomorrow_assignments || []).length
+        + (data.due_this_week_assignments || []).length;
+      const nextBlock = (data.suggested_blocks || [])[0];
+      const weather = data.weather_summary || 'No data available.';
+
+      const priorityTitle = topPriority && topPriority.title ? topPriority.title : 'No data available.';
+      const priorityCourse = topPriority && topPriority.course_name ? topPriority.course_name : 'No data available.';
+      const priorityDue = topPriority
+        ? (topPriority.due_at ? formatDateTime(topPriority.due_at) : (topPriority.starts_at ? formatDateTime(topPriority.starts_at) : 'No data available.'))
+        : 'No data available.';
+
+      const nextStepTitle = nextBlock && nextBlock.title ? nextBlock.title : 'No data available.';
+      const nextStepStart = nextBlock && nextBlock.starts_at ? formatDateTime(nextBlock.starts_at) : 'No data available.';
+      const nextClassCourse = nextClass && nextClass.course_code ? nextClass.course_code : 'No data available.';
+      const nextClassTitle = nextClass && nextClass.title ? nextClass.title : 'No data available.';
+      const nextClassTime = nextClass && nextClass.starts_at ? formatDateTime(nextClass.starts_at) : 'No data available.';
+      const nextClassLocation = nextClass && nextClass.location ? nextClass.location : null;
+
+      const upcomingMarkup = upcomingAssignments.length
+        ? upcomingAssignments.map(item => {
+            const due = item.due_at ? formatDateTime(item.due_at) : (item.starts_at ? formatDateTime(item.starts_at) : 'No data available.');
+            const course = item.course_name ? `Course: ${item.course_name}` : '';
+            return `
+              <div class="sitrep-section">
+                <div class="sitrep-row">${escapeHtml(item.title || 'Untitled item')}</div>
+                ${course ? `<div class="sitrep-row sitrep-row--subtle">${escapeHtml(course)}</div>` : ''}
+                <div class="sitrep-row sitrep-row--subtle">${escapeHtml(`Due: ${due}`)}</div>
+              </div>
+            `;
+          }).join('')
+        : `<div class="sitrep-row">No upcoming assignments.</div>`;
+
+      return `
+        <div class="sitrep-body">
+          <div class="sitrep-intro">Good morning. Here's your briefing for today.</div>
+          ${sitrepSection('Today at a glance', [
+            `${today} scheduled item${today === 1 ? '' : 's'}`,
+            `${must} task${must === 1 ? '' : 's'} needing attention`,
+            `${open} still-open school task${open === 1 ? '' : 's'}`,
+            `${dueThisWeekCount} assignment${dueThisWeekCount === 1 ? '' : 's'} due this week`,
+          ])}
+          ${sitrepSection('Next Class', nextClass
+            ? [
+                `Course: ${nextClassCourse}`,
+                `Title: ${nextClassTitle}`,
+                `Time: ${nextClassTime}`,
+                nextClassLocation ? `Location: ${nextClassLocation}` : '',
+              ]
+            : ['No upcoming classes today.'])}
+          ${sitrepSection('Top Priority', [
+            priorityTitle,
+            priorityCourse !== 'No data available.' ? `Course: ${priorityCourse}` : priorityCourse,
+            `Due: ${priorityDue}`,
+          ])}
+          <div class="sitrep-section">
+            <div class="sitrep-section-title">Upcoming Assignments</div>
+            ${upcomingMarkup}
+          </div>
+          ${sitrepSection('Recommended Next Step', [
+            nextStepTitle,
+            `Start: ${nextStepStart}`,
+          ])}
+          ${sitrepSection('Weather', [weather])}
+        </div>
+      `;
+    }
+
     function buildSitrepText(data) {
       const today = (data.today || []).length;
       const must = (data.must_do_today || []).length;
@@ -3091,7 +3465,7 @@ textarea:focus {
         latestSitrepPayload = data;
 
         document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleString();
-        document.getElementById('sitrepText').textContent = buildSitrepText(data);
+        document.getElementById('sitrepText').innerHTML = buildSitrepMarkup(data);
         document.getElementById('weatherLine').textContent = '';
 
         renderWarnings(data.warnings || []);
@@ -3192,8 +3566,16 @@ textarea:focus {
           updateHeaderStatus();
           return;
         }
-        console.error(event);
-        setVoiceStatus('Read Sitrep did not complete in this browser. The assistant stayed in read-only mode.', true);
+        console.error('speech synthesis error', {
+          error: event && event.error,
+          charIndex: event && event.charIndex,
+          elapsedTime: event && event.elapsedTime,
+          name: event && event.name,
+          utteranceTextLength: text.length,
+          voiceName: voice && voice.name,
+          voiceLang: voice && voice.lang,
+        });
+        setVoiceStatus(describeSpeechError(event, voice), true);
         updateHeaderStatus();
       };
       window.speechSynthesis.speak(u);
@@ -4143,4 +4525,3 @@ textarea:focus {
   </script>
 </body>
 </html>
-

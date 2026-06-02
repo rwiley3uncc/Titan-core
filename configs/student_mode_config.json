@@ -25,6 +25,7 @@
     "local_only": true,
     "read_only": true,
     "supported_extensions": [
+      ".docx",
       ".pdf",
       ".md",
       ".txt"

@@ -176,6 +176,8 @@ def _student_course_source_items(answer_payload: dict[str, object]) -> list[dict
                 "course_tag": str(entry.get("course_tag") or "").strip(),
                 "category": str(entry.get("category") or "").strip(),
                 "source_kind": str(entry.get("source_kind") or "user_upload").strip(),
+                "page_number": entry.get("page_number"),
+                "block_index": entry.get("block_index"),
                 "score": float(entry.get("relevance_score") or 0.0),
                 "excerpt": str(entry.get("excerpt") or "").strip(),
             }

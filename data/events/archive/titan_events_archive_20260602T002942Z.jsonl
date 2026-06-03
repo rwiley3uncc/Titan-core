@@ -1,0 +1,1 @@
+{"event_id":"ab768e0da804446d9a9f95d4463b9d4c","timestamp":"2026-06-01T21:07:36.043552Z","source":"battlebuddy","subsystem":"battlebuddy","severity":"NOTICE","event_type":"proposed_action_created","summary":"Generated 1 proposed action(s).","details":"Action types: refresh_sitrep.","confidence":0.0,"risk":"medium","requires_approval":true,"approved":false,"status":"pending"}

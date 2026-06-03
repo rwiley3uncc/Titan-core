@@ -1,0 +1,16 @@
+[
+  {
+    "document_id": "doc-itsc-2181-sylabus-3004be0425a4-2ac11f55dcae",
+    "filename": "ITSC 2181 Sylabus-3004be0425a4.pdf",
+    "source_path": "C:\\Users\\mouse\\DEV\\Titan-core\\data\\course_documents\\uploads\\ITSC 2181 Sylabus-3004be0425a4.pdf",
+    "file_type": "pdf",
+    "created_timestamp": "2026-06-01T21:43:05+00:00",
+    "ingestion_timestamp": "2026-06-01T21:43:05+00:00",
+    "course_tag": "2181",
+    "document_category": "syllabus",
+    "extracted_text_path": "C:\\Users\\mouse\\DEV\\Titan-core\\data\\course_documents\\text\\doc-itsc-2181-sylabus-3004be0425a4-2ac11f55dcae.txt",
+    "chunk_path": "C:\\Users\\mouse\\DEV\\Titan-core\\data\\course_documents\\chunks\\doc-itsc-2181-sylabus-3004be0425a4-2ac11f55dcae.json",
+    "chunk_count": 1,
+    "ingestion_status": "placeholder_pdf_extraction"
+  }
+]

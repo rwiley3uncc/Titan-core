@@ -1,0 +1,1 @@
+PDF placeholder extraction only. Titan could not extract text from 'ITSC 2181 Sylabus-3004be0425a4.pdf' because no local PDF text extraction library was available.
